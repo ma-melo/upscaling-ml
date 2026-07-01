@@ -1,0 +1,18 @@
+tensorboard
+tqdm
+matplotlib
+numpy
+pandas
+datasets
+nltk
+
+# Repositório extra para buscar a versão CUDA no Linux/Windows
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# Instala a versão padrão (com suporte a MPS) APENAS no macOS (Darwin)
+torch==2.11.0; sys_platform == 'darwin'
+torchvision==0.26.0; sys_platform == 'darwin'
+
+# Instala a versão do repositório extra (CUDA) em sistemas Linux ou Windows
+torch==2.11.0+cu128; sys_platform != 'darwin'
+torchvision==0.26.0+cu128; sys_platform != 'darwin'
