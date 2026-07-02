@@ -62,9 +62,12 @@ srcnn = SRCNN().to(DEVICE)
 srcnn_optimizer = optim.Adam(srcnn.parameters(), lr=LR)
 srcnn_criterion = nn.MSELoss()
 
+# Learning rate scheduler: decay de 0.5x a cada 30 épocas
+srcnn_scheduler = optim.lr_scheduler.StepLR(srcnn_optimizer, step_size=30, gamma=0.5)
+
 srcnn_history = fit(
     srcnn, train_loader, val_loader, srcnn_optimizer, srcnn_criterion, DEVICE,
-    epochs=NUM_EPOCHS, scale=SCALE, upscale_input=True
+    epochs=NUM_EPOCHS, scale=SCALE, upscale_input=True, scheduler=srcnn_scheduler
 )
 
 # Avaliar SRCNN nos benchmarks
@@ -83,9 +86,12 @@ edsr = EDSRBaseline(num_features=64, num_blocks=16, scale=SCALE).to(DEVICE)
 edsr_optimizer = optim.Adam(edsr.parameters(), lr=LR)
 edsr_criterion = nn.L1Loss()
 
+# Learning rate scheduler: decay de 0.5x a cada 30 épocas
+edsr_scheduler = optim.lr_scheduler.StepLR(edsr_optimizer, step_size=30, gamma=0.5)
+
 edsr_history = fit(
     edsr, train_loader, val_loader, edsr_optimizer, edsr_criterion, DEVICE,
-    epochs=NUM_EPOCHS, scale=SCALE, upscale_input=False
+    epochs=NUM_EPOCHS, scale=SCALE, upscale_input=False, scheduler=edsr_scheduler
 )
 
 # Avaliar EDSR nos benchmarks
