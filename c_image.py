@@ -8,8 +8,8 @@ from PIL import Image
 from pathlib import Path
 
 #Caminhos
-IMAGEM = "datasets/DIV2K_valid_HR/0810.png"
-CAMINHO_PESOS = "resultados_esrgan/esrgan_generator_gan.pth"
+IMAGEM = "datasets/DIV2K_valid_HR/0804.png"
+CAMINHO_PESOS = "resultados_esrgan/esrgan_final_interpolated.pth"
 PASTA_SAIDA = Path("imagens_saida")
 PASTA_SAIDA.mkdir(exist_ok=True)
 
