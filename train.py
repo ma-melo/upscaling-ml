@@ -70,52 +70,85 @@ def evaluate(model, loader, device, scale=4, upscale_input=True):
     }
 
 
-def fit(model, train_loader, val_loader, optimizer, criterion, device, epochs, scale=4, upscale_input=True, scheduler=None,):
-    """Loop de treino completo para super-resolução.
+# def fit(model, train_loader, val_loader, optimizer, criterion, device, epochs, scale=4, upscale_input=True, scheduler=None,):
+#     """Loop de treino completo para super-resolução.
 
-    Parâmetros
-    ----------
-    scale, upscale_input : repassados para train_one_epoch e evaluate.
-    scheduler            : chamado ao final de cada época (opcional).
+#     Parâmetros
+#     ----------
+#     scale, upscale_input : repassados para train_one_epoch e evaluate.
+#     scheduler            : chamado ao final de cada época (opcional).
 
-    Retorna
-    -------
-    history : dict com listas 'train_loss', 'psnr_model', 'ssim_model', 'psnr_bicubic'.
-    """
-    history = {
-        "train_loss": [],
-        "psnr_model": [],
-        "ssim_model": [],
-        "psnr_bicubic": [],
-    }
+#     Retorna
+#     -------
+#     history : dict com listas 'train_loss', 'psnr_model', 'ssim_model', 'psnr_bicubic'.
+#     """
+#     history = {
+#         "train_loss": [],
+#         "psnr_model": [],
+#         "ssim_model": [],
+#         "psnr_bicubic": [],
+#     }
+
+#     for epoch in range(epochs):
+#         # train_one_epoch retorna apenas o loss médio da época
+#         train_loss = train_one_epoch(
+#             model, train_loader, optimizer, criterion, device,
+#             scale=scale, upscale_input=upscale_input,
+#         )
+
+#         # evaluate retorna dict {psnr_model, ssim_model, psnr_bicubic}
+#         val_metrics = evaluate(
+#             model, val_loader, device,
+#             scale=scale, upscale_input=upscale_input,
+#         )
+
+#         if scheduler is not None:
+#             scheduler.step()
+
+#         history["train_loss"].append(train_loss)
+#         history["psnr_model"].append(val_metrics["psnr_model"])
+#         history["ssim_model"].append(val_metrics["ssim_model"])
+#         history["psnr_bicubic"].append(val_metrics["psnr_bicubic"])
+
+#         print(
+#             f"Epoch {epoch + 1}/{epochs} | "
+#             f"Loss: {train_loss:.6f} | "
+#             f"PSNR: {val_metrics['psnr_model']:.2f} dB "
+#             f"(bicubic: {val_metrics['psnr_bicubic']:.2f} dB) | "
+#             f"SSIM: {val_metrics['ssim_model']:.4f}"
+#         )
+
+#     return history
+
+def fit(model, train_loader, val_loader, optimizer, criterion, device, epochs,
+        scale=4, upscale_input=True, scheduler=None, eval_every=5, writer=None, tag=""):
+    history = {"train_loss": [], "psnr_model": [], "ssim_model": [], "psnr_bicubic": []}
 
     for epoch in range(epochs):
-        # train_one_epoch retorna apenas o loss médio da época
-        train_loss = train_one_epoch(
-            model, train_loader, optimizer, criterion, device,
-            scale=scale, upscale_input=upscale_input,
-        )
-
-        # evaluate retorna dict {psnr_model, ssim_model, psnr_bicubic}
-        val_metrics = evaluate(
-            model, val_loader, device,
-            scale=scale, upscale_input=upscale_input,
-        )
+        train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device,
+                                      scale=scale, upscale_input=upscale_input)
 
         if scheduler is not None:
             scheduler.step()
 
         history["train_loss"].append(train_loss)
-        history["psnr_model"].append(val_metrics["psnr_model"])
-        history["ssim_model"].append(val_metrics["ssim_model"])
-        history["psnr_bicubic"].append(val_metrics["psnr_bicubic"])
 
-        print(
-            f"Epoch {epoch + 1}/{epochs} | "
-            f"Loss: {train_loss:.6f} | "
-            f"PSNR: {val_metrics['psnr_model']:.2f} dB "
-            f"(bicubic: {val_metrics['psnr_bicubic']:.2f} dB) | "
-            f"SSIM: {val_metrics['ssim_model']:.4f}"
-        )
+        if (epoch + 1) % eval_every == 0 or epoch == epochs - 1:
+            val_metrics = evaluate(model, val_loader, device, scale=scale, upscale_input=upscale_input)
+            history["psnr_model"].append(val_metrics["psnr_model"])
+            history["ssim_model"].append(val_metrics["ssim_model"])
+            history["psnr_bicubic"].append(val_metrics["psnr_bicubic"])
+
+            if writer is not None:
+                writer.add_scalar(f"PSNR/val_{tag}", val_metrics["psnr_model"], epoch)
+                writer.add_scalar(f"SSIM/val_{tag}", val_metrics["ssim_model"], epoch)
+
+            print(f"Epoch {epoch+1}/{epochs} | Loss: {train_loss:.6f} | "
+                  f"PSNR: {val_metrics['psnr_model']:.2f} dB | SSIM: {val_metrics['ssim_model']:.4f}")
+        else:
+            print(f"Epoch {epoch+1}/{epochs} | Loss: {train_loss:.6f}")
+
+        if writer is not None:
+            writer.add_scalar(f"Loss/train_{tag}", train_loss, epoch)
 
     return history
