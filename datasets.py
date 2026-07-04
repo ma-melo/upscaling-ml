@@ -13,9 +13,11 @@ SRBenchmarkDataset -> avaliação com benchmarks padrão (Set5, Set14, BSD100,
 import random
 from pathlib import Path
 
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageEnhance, ImageFilter
 from torch.utils.data import Dataset
 import torchvision.transforms.functional as TF
+import torchvision.transforms as transforms
 
 
 class SRDataset(Dataset):
@@ -24,9 +26,7 @@ class SRDataset(Dataset):
     def __init__(self, folder, patch_size=96, scale=4):
         self.files = sorted(Path(folder).glob("*.png"))
         if len(self.files) == 0:
-            raise FileNotFoundError(
-                f"Nenhum .png encontrado em '{folder}'. Verifique o caminho."
-            )
+            raise FileNotFoundError(f"Nenhum .png encontrado em '{folder}'. Verifique o caminho.")
         self.patch_size = patch_size
         self.scale = scale
 
@@ -96,6 +96,153 @@ class SREvalDataset(Dataset):
         lr = hr.resize((w // self.scale, h // self.scale), Image.BICUBIC)
 
         return TF.to_tensor(lr), TF.to_tensor(hr)
+
+
+class SRDatasetAugmented(Dataset):
+    """Dataset de treino com augmentação robusta para super-resolução.
+
+    Técnicas de augmentação incluem:
+    - Flip horizontal (50%)
+    - Rotações arbitrárias (-45° a +45°)
+    - Zoom aleatório (0.8x a 1.2x)
+    - Brightness/Contrast
+    - Gaussian blur (simula degradação)
+    - Ruído Gaussiano (robustez)
+    - Color jittering
+    """
+
+    def __init__(self, folder, patch_size=96, scale=4):
+        self.files = sorted(Path(folder).glob("*.png"))
+        if len(self.files) == 0:
+            raise FileNotFoundError(f"Nenhum .png encontrado em '{folder}'.")
+        self.patch_size = patch_size
+        self.scale = scale
+        self.color_jitter = transforms.ColorJitter(
+            brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+        )
+
+    def __len__(self):
+        return len(self.files)
+
+    def _apply_augmentations(self, img):
+        """Aplica pipeline completo de augmentações."""
+
+        # 1. Flip horizontal (50%)
+        if random.random() < 0.5:
+            img = TF.hflip(img)
+
+        # 2. Rotações arbitrárias (-45° a +45°)
+        if random.random() < 0.7:
+            angle = random.uniform(-45, 45)
+            img = TF.rotate(img, angle, expand=False)
+
+        # 3. Zoom/Crop aleatório
+        if random.random() < 0.6:
+            scale_factor = random.uniform(0.85, 1.15)
+            new_size = int(self.patch_size * scale_factor)
+            img = img.resize((new_size, new_size), Image.BICUBIC)
+
+        # 4. Brightness/Contrast
+        if random.random() < 0.5:
+            brightness_factor = random.uniform(0.85, 1.15)
+            enhancer = ImageEnhance.Brightness(img)
+            img = enhancer.enhance(brightness_factor)
+
+        if random.random() < 0.5:
+            contrast_factor = random.uniform(0.85, 1.15)
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(contrast_factor)
+
+        # 5. Gaussian blur (simula degradação real)
+        if random.random() < 0.4:
+            radius = random.uniform(0.5, 1.5)
+            img = img.filter(ImageFilter.GaussianBlur(radius=radius))
+
+        # 6. Color jittering
+        if random.random() < 0.5:
+            img = self.color_jitter(img)
+
+        return img
+
+    def __getitem__(self, idx):
+        img = Image.open(self.files[idx]).convert("RGB")
+        w, h = img.size
+
+        if w < self.patch_size or h < self.patch_size:
+            img = img.resize(
+                (max(w, self.patch_size), max(h, self.patch_size)),
+                Image.BICUBIC,
+            )
+            w, h = img.size
+
+        x = random.randint(0, w - self.patch_size)
+        y = random.randint(0, h - self.patch_size)
+        hr = img.crop((x, y, x + self.patch_size, y + self.patch_size))
+
+        # Aplica augmentações
+        hr = self._apply_augmentations(hr)
+
+        # Redimensiona para o patch_size (pode ter crescido/diminuído)
+        hr = hr.resize((self.patch_size, self.patch_size), Image.BICUBIC)
+
+        # Gera LR
+        lr = hr.resize(
+            (self.patch_size // self.scale, self.patch_size // self.scale),
+            Image.BICUBIC,
+        )
+
+        return TF.to_tensor(lr), TF.to_tensor(hr)
+
+
+class SRDatasetMultiScale(Dataset):
+    """Dataset que treina em múltiplas escalas (2x, 3x, 4x).
+
+    A cada epoch, escolhe aleatoriamente uma escala diferente.
+    Útil para criar modelos mais robustos que funcionam em várias escalas.
+    """
+
+    def __init__(self, folder, patch_size=96, scales=[2, 3, 4]):
+        self.files = sorted(Path(folder).glob("*.png"))
+        if len(self.files) == 0:
+            raise FileNotFoundError(f"Nenhum .png encontrado em '{folder}'.")
+        self.patch_size = patch_size
+        self.scales = scales
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        img = Image.open(self.files[idx]).convert("RGB")
+        w, h = img.size
+
+        if w < self.patch_size or h < self.patch_size:
+            img = img.resize(
+                (max(w, self.patch_size), max(h, self.patch_size)),
+                Image.BICUBIC,
+            )
+            w, h = img.size
+
+        x = random.randint(0, w - self.patch_size)
+        y = random.randint(0, h - self.patch_size)
+        hr = img.crop((x, y, x + self.patch_size, y + self.patch_size))
+
+        # Augmentação básica
+        if random.random() < 0.5:
+            hr = TF.hflip(hr)
+        angle = random.choice([0, 90, 180, 270])
+        if angle != 0:
+            hr = hr.rotate(angle)
+
+        # Escolhe escala aleatória
+        scale = random.choice(self.scales)
+
+        # Gera LR com a escala escolhida
+        lr = hr.resize(
+            (self.patch_size // scale, self.patch_size // scale),
+            Image.BICUBIC,
+        )
+
+        return TF.to_tensor(lr), TF.to_tensor(hr), scale
 
 
 class SRBenchmarkDataset(Dataset):

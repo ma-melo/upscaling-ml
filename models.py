@@ -12,6 +12,83 @@ import torch.nn.functional as F
 
 
 class SRCNN(nn.Module):
+    """SRCNN original (Dong et al., 2016).
+
+    Arquitetura: Conv(9) → ReLU → Conv(1) → ReLU → Conv(5)
+    Entrada: imagem LR já upscalada via bicúbica
+    """
+    def __init__(self):
+        super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=9, padding=4),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(64, 32, kernel_size=1),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(32, 3, kernel_size=5, padding=2),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class SRCNNAugmented(nn.Module):
+    """SRCNN com arquitetura idêntica, mas treinada com data augmentation robusta.
+
+    A diferença está no dataset (SRDatasetAugmented) usado durante treino.
+    Isso aumenta a robustez sem mudar a arquitetura.
+    """
+    def __init__(self):
+        super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=9, padding=4),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(64, 32, kernel_size=1),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(32, 3, kernel_size=5, padding=2),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class SRCNNMultiScale(nn.Module):
+    """SRCNN que treina em múltiplas escalas (2x, 3x, 4x).
+
+    Mantém a mesma arquitetura, mas durante treino recebe:
+    - imagens upscaladas em diferentes escalas (2x, 3x, 4x)
+    - criando um modelo mais generalista
+    """
+    def __init__(self):
+        super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=9, padding=4),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(64, 32, kernel_size=1),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(32, 3, kernel_size=5, padding=2),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class SRCNNAugmentedMultiScale(nn.Module):
+    """SRCNN com data augmentation robusta E múltiplas escalas.
+
+    Combina o melhor dos dois mundos:
+    - Dataset com augmentações diversas (blur, ruído, contraste)
+    - Treino em escalas 2x, 3x, 4x
+    - Modelo mais robusto e generalista
+    """
     def __init__(self):
         super().__init__()
 
