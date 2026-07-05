@@ -1,13 +1,8 @@
-"""
-Funções de treino e avaliação, reutilizáveis entre modelos (SRCNN, EDSR, ESRGAN etc.)
-
-Este módulo tem 3 funções, cada uma com uma responsabilidade bem definida:
-    train_one_epoch -> roda uma época de treino (forward + backward + optimizer.step)
-    evaluate        -> avalia o modelo em um loader (PSNR/SSIM médios, sem gradiente)
-    fit             -> orquestra o loop completo de treino, chamando as duas acima
-                       a cada época e cuidando de scheduler, TensorBoard, checkpoint
-                       do melhor modelo e early stopping.
-"""
+# funcoes de treino e avaliacao, reutilizaveis entre modelos (srcnn, edsr, esrgan etc)
+#
+# train_one_epoch -> roda uma epoca de treino (forward + backward + optimizer.step)
+# evaluate -> avalia o modelo em um loader (psnr/ssim medios, sem gradiente)
+# fit -> orquestra o loop completo, chamando as duas acima a cada epoca e cuidando de scheduler, tensorboard, checkpoint do melhor modelo e early stopping
 
 import statistics
 import time
@@ -20,52 +15,33 @@ from metrics import calc_psnr, calc_ssim
 
 
 def _upscale_to_match(lr_img, hr_img):
-    """Upsamplea lr_img via bicubic para o tamanho espacial exato de hr_img.
-
-    Usamos `size=hr_img.shape[-2:]` em vez de `scale_factor=scale` porque
-    scale_factor multiplica o tamanho ATUAL do tensor -- se o LR não tiver sido
-    gerado por uma divisão inteira exata (ex: patch_size=33, scale=4, onde
-    33 // 4 = 8 e 8 * 4 = 32 != 33), o resultado não bate com o tamanho do HR
-    e a loss quebra por incompatibilidade de shape. Mirar no tamanho absoluto
-    do HR é robusto a qualquer combinação de patch_size/scale.
-    """
+    # upsamplea lr_img via bicubic pro tamanho espacial exato de hr_img
+    #
+    # usa size=hr_img.shape[-2:] em vez de scale_factor porque scale_factor
+    # multiplica o tamanho atual do tensor -- se o lr nao veio de uma divisao
+    # inteira exata (ex: patch_size=33, scale=4, 33 // 4 = 8, 8 * 4 = 32 != 33)
+    # o resultado nao bate com o hr e a loss quebra por shape incompativel.
+    # mirar no tamanho absoluto do hr e robusto pra qualquer combinacao
     return F.interpolate(lr_img, size=hr_img.shape[-2:], mode="bicubic", align_corners=False)
 
 
 def train_one_epoch(
     model, loader, optimizer, criterion, device,
-    scale=4, upscale_input=True, desc="Treinando",
+    scale=4, upscale_input=True, desc="treinando",
     grad_clip=None, use_amp=False, scaler=None,
 ):
-    """Treina o modelo por uma época.
-
-    Parâmetros
-    ----------
-    upscale_input : bool
-        True  -> usado pela SRCNN (recebe o LR já upscalado via bicubic).
-        False -> usado por modelos que fazem upsampling internamente (EDSR, ESRGAN).
-    desc : str
-        Rótulo mostrado na barra de progresso (tqdm). Útil para diferenciar qual
-        modelo/escala está treinando quando há múltiplos treinos em sequência
-        (ex: "Treinando [edsr_scale4]").
-    grad_clip : float | None
-        Se definido, aplica clipagem de norma de gradiente
-        (torch.nn.utils.clip_grad_norm_) com esse valor máximo. Recomendado para
-        redes mais profundas (EDSR, ESRGAN), onde picos de gradiente podem
-        desestabilizar o treino. None desativa (comportamento original).
-    use_amp : bool
-        Se True, usa mixed precision (torch.cuda.amp) para acelerar o treino em
-        GPU CUDA (sem efeito relevante em CPU/MPS). Requer `scaler`.
-    scaler : torch.cuda.amp.GradScaler | None
-        Obrigatório se use_amp=True. Deve ser criado uma única vez fora do loop
-        de épocas (mantém estado entre chamadas) -- fit() já cuida disso.
-
-    Retorna
-    -------
-    float : loss média da época (média das médias por batch; se o último batch
-    for menor que os demais, ele pesa igual aos outros -- viés pequeno, mas
-    existente caso len(dataset) não seja múltiplo de batch_size).
-    """
+    # treina o modelo por uma epoca
+    #
+    # upscale_input: true pra srcnn (recebe lr ja upscalado via bicubic),
+    #   false pra modelos que fazem upsampling interno (edsr, esrgan)
+    # grad_clip: se definido, aplica clip_grad_norm_ com esse valor maximo.
+    #   recomendado pra redes mais profundas (edsr, esrgan), onde picos de
+    #   gradiente podem desestabilizar o treino
+    # use_amp: mixed precision (torch.cuda.amp), so faz diferenca em gpu cuda.
+    #   requer scaler, criado uma unica vez fora do loop de epocas (fit ja
+    #   cuida disso)
+    #
+    # retorna a loss media da epoca (media das medias por batch)
     if use_amp and scaler is None:
         raise ValueError("use_amp=True requer um `scaler` (torch.cuda.amp.GradScaler) criado fora do loop.")
 
@@ -108,54 +84,36 @@ def train_one_epoch(
 @torch.no_grad()
 def evaluate(model, loader, device, scale=4, upscale_input=True, ssim_fn=calc_ssim,
              criterion=None, show_progress=True):
-    """Avalia o modelo em um dataset de teste (ex: Set5, Set14, DIV2K_valid).
-
-    IMPORTANTE: assume loader com batch_size=1. Cada métrica é calculada por
-    imagem individual e depois agregada. Com batch_size > 1, PSNR/SSIM seriam
-    calculados sobre o batch inteiro de uma vez (média entre as imagens do
-    batch), perdendo granularidade por imagem -- por isso o uso recomendado
-    é sempre batch_size=1 neste loader.
-
-    Parâmetros
-    ----------
-    ssim_fn : callable
-        Função usada para calcular o SSIM. Por padrão, `calc_ssim` (versão
-        global simplificada, rápida -- adequada para acompanhar métricas
-        durante o treino, mas NÃO é o SSIM padrão da literatura). Para os
-        resultados finais do relatório (comparáveis com os papers), passe
-        `calc_ssim_skimage`:
-            from metrics import calc_ssim_skimage
-            evaluate(model, loader, device, ssim_fn=calc_ssim_skimage)
-    criterion : callable | None
-        Se fornecido (a mesma loss usada no treino, ex: nn.L1Loss()), calcula
-        também a "loss de validação" -- no mesmo formato/escala da train_loss,
-        permitindo comparar as duas curvas e identificar overfitting (loss de
-        treino caindo enquanto a de validação estagna ou sobe). Calculada
-        sobre a saída do modelo ANTES do clamp(0,1), pra ficar no mesmo
-        espaço numérico da loss vista durante o treino. Se None (padrão), a
-        chave "loss_val" não aparece no retorno.
-    show_progress : bool
-        Mostra uma barra de progresso (tqdm). Diferente do treino, aqui cada
-        "batch" é uma imagem inteira (não um patch pequeno), então avaliar um
-        benchmark maior (ex: Urban100) pode demorar visivelmente sem feedback.
-        fit() chama evaluate() com show_progress=False para não competir com
-        a barra de progresso do treino.
-
-    Retorna
-    -------
-    dict com psnr_model, psnr_model_std, ssim_model, ssim_model_std, psnr_bicubic,
-    e opcionalmente loss_val (se `criterion` for passado). Os campos *_std
-    (desvio padrão populacional) ajudam a identificar se o modelo é consistente
-    entre as imagens do benchmark ou se poucas imagens "difíceis" estão
-    puxando a média para baixo -- útil para a discussão dos resultados.
-    """
+    # avalia o modelo num dataset de teste (ex: set5, set14, div2k_valid)
+    #
+    # assume loader com batch_size=1: cada metrica e calculada por imagem
+    # individual e depois agregada. com batch_size > 1 o psnr/ssim seria
+    # calculado sobre o batch inteiro, perdendo granularidade por imagem
+    #
+    # ssim_fn: por padrao calc_ssim (versao global simplificada, rapida,
+    #   boa pra acompanhar o treino, mas nao e o ssim padrao da literatura).
+    #   pros resultados finais do relatorio, passar calc_ssim_skimage:
+    #   from metrics import calc_ssim_skimage
+    #   evaluate(model, loader, device, ssim_fn=calc_ssim_skimage)
+    # criterion: se fornecido, calcula tambem a loss de validacao no mesmo
+    #   formato da train_loss, pra comparar as duas curvas e identificar
+    #   overfitting. calculada antes do clamp(0,1), no mesmo espaco numerico
+    #   da loss vista no treino. se none, a chave "loss_val" nao aparece
+    # show_progress: mostra barra de progresso. aqui cada "batch" e uma
+    #   imagem inteira, entao um benchmark maior (urban100) pode demorar
+    #   sem feedback. fit() chama com show_progress=False
+    #
+    # retorna dict com psnr_model, psnr_model_std, ssim_model, ssim_model_std,
+    # psnr_bicubic e opcionalmente loss_val. os campos *_std ajudam a ver se
+    # o modelo e consistente entre as imagens ou se poucas imagens dificeis
+    # puxam a media pra baixo
     model.eval()
 
     psnr_model, ssim_model = [], []
     psnr_bicubic = []
     loss_val = [] if criterion is not None else None
 
-    iterator = tqdm(loader, desc="Avaliando", leave=False) if show_progress else loader
+    iterator = tqdm(loader, desc="avaliando", leave=False) if show_progress else loader
 
     for lr_img, hr_img in iterator:
         lr_img, hr_img = lr_img.to(device), hr_img.to(device)
@@ -193,58 +151,32 @@ def fit(
     eval_every=5, writer=None, tag="", save_best_path=None,
     grad_clip=None, use_amp=False, patience=None, train_desc=None,
 ):
-    """Loop de treino completo para super-resolução.
-
-    Parâmetros
-    ----------
-    eval_every : int
-        Frequência (em épocas) de chamadas a `evaluate`. A avaliação roda em
-        imagens inteiras (não patches), então é mais cara que uma época de
-        treino -- por padrão, avalia a cada 5 épocas. A última época é sempre
-        avaliada, independente de eval_every, para garantir uma métrica final.
-        Use eval_every=1 para reproduzir o comportamento "avaliar toda época".
-    scheduler_needs_metric : bool
-        Schedulers como ReduceLROnPlateau exigem uma métrica em
-        `scheduler.step(metrica)`, diferente de schedulers "cegos" como StepLR
-        (que usam `scheduler.step()` sem argumento). Se True, fit() chama
-        `scheduler.step(val_metrics["psnr_model"])` -- e só nas épocas em que
-        avaliação de fato ocorreu (eval_every); nas demais épocas, o
-        scheduler simplesmente não avança (não há métrica nova pra basear a
-        decisão).
-    writer : SummaryWriter | None
-        Se fornecido, loga loss/PSNR/SSIM/learning rate no TensorBoard a cada
-        época, usando `tag` para diferenciar múltiplos treinos no mesmo writer.
-    tag : str
-        Sufixo usado nas chaves do TensorBoard e na barra de progresso
-        (ex: "srcnn", "edsr_scale4").
-    save_best_path : str | Path | None
-        Se fornecido, salva o state_dict do modelo sempre que o PSNR de
-        validação melhora em relação ao melhor até então -- evita que o
-        checkpoint salvo seja o da última época caso o modelo já tenha
-        começado a piorar (overfitting) antes do fim do treino.
-    grad_clip, use_amp : repassados diretamente para train_one_epoch.
-    patience : int | None
-        Se fornecido, interrompe o treino (early stopping) caso o PSNR de
-        validação não melhore por `patience` avaliações consecutivas.
-        None (padrão) desativa -- treina sempre até `epochs`.
-    train_desc : str | None
-        Rótulo da barra de progresso do treino. Por padrão, usa
-        f"Treinando [{tag}]" se `tag` for fornecida, senão "Treinando".
-
-    Retorna
-    -------
-    history : dict com:
-        'train_loss'    -> lista com 1 valor por época (sempre).
-        'epoch_time_sec'-> duração de cada época em segundos (treino + avaliação,
-            quando houve avaliação naquela época) -- 1 valor por época.
-        'psnr_model', 'ssim_model', 'psnr_bicubic', 'val_loss' -> 1 valor por
-            AVALIAÇÃO (não por época, caso eval_every > 1). 'val_loss' só é
-            preenchida se um `criterion` para a validação estiver disponível
-            (fit() reaproveita o mesmo `criterion` do treino).
-        'eval_epochs'   -> em quais números de época cada avaliação ocorreu,
-            para alinhar os campos acima ao eixo x correto num gráfico
-            (ex: plt.plot(history["eval_epochs"], history["val_loss"])).
-    """
+    # loop de treino completo pra super-resolucao
+    #
+    # eval_every: frequencia (em epocas) de chamadas a evaluate. a avaliacao
+    #   roda em imagens inteiras, entao e mais cara que uma epoca de treino
+    #   -- por padrao avalia a cada 5 epocas. a ultima epoca sempre e
+    #   avaliada, independente de eval_every
+    # scheduler_needs_metric: reducelronplateau exige scheduler.step(metrica),
+    #   diferente de schedulers "cegos" como steplr (scheduler.step() sem
+    #   argumento). se true, so avanca nas epocas em que houve avaliacao
+    # writer: se fornecido, loga loss/psnr/ssim/lr no tensorboard a cada
+    #   epoca, usando `tag` pra diferenciar treinos no mesmo writer
+    # save_best_path: se fornecido, salva o state_dict sempre que o psnr de
+    #   validacao melhora -- evita salvar o checkpoint da ultima epoca caso
+    #   o modelo ja tenha comecado a piorar (overfitting)
+    # patience: se fornecido, para o treino (early stopping) caso o psnr de
+    #   validacao nao melhore por `patience` avaliacoes consecutivas
+    # train_desc: rotulo da barra de progresso. padrao usa "treinando [tag]"
+    #   se tag for fornecida, senao "treinando"
+    #
+    # retorna history com:
+    #   train_loss      -> 1 valor por epoca
+    #   epoch_time_sec  -> duracao de cada epoca em segundos, 1 por epoca
+    #   psnr_model, ssim_model, psnr_bicubic, val_loss -> 1 valor por
+    #     avaliacao (nao por epoca, se eval_every > 1)
+    #   eval_epochs     -> em quais epocas cada avaliacao ocorreu, pra
+    #     alinhar os campos acima no eixo x de um grafico
     history = {
         "train_loss": [],
         "epoch_time_sec": [],
@@ -256,7 +188,7 @@ def fit(
     }
 
     scaler = torch.cuda.amp.GradScaler() if use_amp else None
-    desc = train_desc if train_desc is not None else (f"Treinando [{tag}]" if tag else "Treinando")
+    desc = train_desc if train_desc is not None else (f"treinando [{tag}]" if tag else "treinando")
 
     best_psnr = -float("inf")
     epochs_sem_melhora = 0
@@ -293,16 +225,16 @@ def fit(
         epoch_time = time.time() - epoch_start
         history["epoch_time_sec"].append(epoch_time)
 
-        # --- scheduler ---
+        # scheduler
         if scheduler is not None:
             if scheduler_needs_metric:
                 if val_metrics is not None:
                     scheduler.step(val_metrics["psnr_model"])
-                # se não avaliou nesta época, não há métrica nova -> scheduler não avança
+                # se nao avaliou nesta epoca, scheduler nao avanca
             else:
                 scheduler.step()
 
-        # --- melhor checkpoint + early stopping ---
+        # melhor checkpoint + early stopping
         if val_metrics is not None:
             melhorou = val_metrics["psnr_model"] > best_psnr
             if melhorou:
@@ -313,7 +245,7 @@ def fit(
             else:
                 epochs_sem_melhora += 1
 
-        # --- TensorBoard ---
+        # tensorboard
         if writer is not None:
             writer.add_scalar(_key("Loss/train"), train_loss, epoch)
             writer.add_scalar(_key("Time/epoch_sec"), epoch_time, epoch)
@@ -323,22 +255,22 @@ def fit(
                 writer.add_scalar(_key("PSNR/bicubic"), val_metrics["psnr_bicubic"], epoch)
                 writer.add_scalar(_key("Loss/val"), val_metrics["loss_val"], epoch)
 
-        # --- log no console ---
+        # log no console
         if val_metrics is not None:
             print(
-                f"Epoch {epoch + 1}/{epochs} | "
-                f"Loss: {train_loss:.6f} (val: {val_metrics['loss_val']:.6f}) | "
-                f"PSNR: {val_metrics['psnr_model']:.2f} dB "
-                f"(bicubic: {val_metrics['psnr_bicubic']:.2f} dB) | "
-                f"SSIM: {val_metrics['ssim_model']:.4f} | "
-                f"Tempo: {epoch_time:.1f}s"
+                f"epoch {epoch + 1}/{epochs} | "
+                f"loss: {train_loss:.6f} (val: {val_metrics['loss_val']:.6f}) | "
+                f"psnr: {val_metrics['psnr_model']:.2f} db "
+                f"(bicubic: {val_metrics['psnr_bicubic']:.2f} db) | "
+                f"ssim: {val_metrics['ssim_model']:.4f} | "
+                f"tempo: {epoch_time:.1f}s"
             )
         else:
-            print(f"Epoch {epoch + 1}/{epochs} | Loss: {train_loss:.6f} | Tempo: {epoch_time:.1f}s")
+            print(f"epoch {epoch + 1}/{epochs} | loss: {train_loss:.6f} | tempo: {epoch_time:.1f}s")
 
-        # --- early stopping ---
+        # early stopping
         if patience is not None and val_metrics is not None and epochs_sem_melhora >= patience:
-            print(f"Early stopping: sem melhora de PSNR por {patience} avaliações consecutivas.")
+            print(f"early stopping: sem melhora de psnr por {patience} avaliacoes consecutivas.")
             break
 
     return history

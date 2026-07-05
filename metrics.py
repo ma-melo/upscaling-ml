@@ -1,81 +1,78 @@
-"""
-Métricas de avaliação para super-resolução.
-
-MÉTRICAS PADRÃO (RGB):
-- calc_psnr()           -> PSNR em RGB
-- calc_ssim()           -> SSIM simplificado em RGB (rápido, treino)
-- calc_ssim_skimage()   -> SSIM janelado via skimage em RGB (mais preciso)
-
-MÉTRICAS DO PAPERS (Canal Y - Luminância):
-- calc_psnr_y()         -> PSNR no canal Y (padrão dos papers)
-- calc_ssim_y()         -> SSIM janelado no canal Y (padrão dos papers)
-
-MÉTRICAS COM CROP DE BORDA:
-- calc_psnr_y_border()  -> PSNR Y ignorando borda (evita penalizar artefatos)
-- calc_ssim_y_border()  -> SSIM Y ignorando borda
-
-MÉTRICA PERCEPTUAL:
-- calc_lpips()          -> LPIPS (melhor correlação com percepção humana)
-"""
+# metricas de avaliacao para super-resolucao
+#
+# metricas rgb: calc_psnr, calc_ssim, calc_ssim_skimage
+# metricas canal y (padrao dos papers): calc_psnr_y, calc_ssim_y
+# metricas com crop de borda: calc_psnr_y_border, calc_ssim_y_border
+# metrica perceptual: calc_lpips
 
 import torch
 import torch.nn.functional as F
 
 
+def _gaussian_kernel(window_size=11, sigma=1.5, device=None, dtype=None):
+    # kernel gaussiano 2d normalizado, usado no ssim janelado
+    coords = torch.arange(window_size, device=device, dtype=dtype) - window_size // 2
+    g1d = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+    g1d = g1d / g1d.sum()
+    g2d = g1d.unsqueeze(0) * g1d.unsqueeze(1)
+    return g2d.unsqueeze(0).unsqueeze(0)
+
+
+def _ssim_windowed(img1, img2, data_range=1.0, window_size=11, sigma=1.5):
+    # ssim janelado via convolucao gaussiana, sem depender do skimage
+    # janela 11x11, sigma 1.5, sem padding -> equivalente ao skimage
+    # com gaussian_weights=True, sigma=1.5, use_sample_covariance=False
+    if img1.dim() == 2:
+        img1 = img1.unsqueeze(0).unsqueeze(0)
+        img2 = img2.unsqueeze(0).unsqueeze(0)
+    elif img1.dim() == 3:
+        img1 = img1.unsqueeze(0)
+        img2 = img2.unsqueeze(0)
+
+    C = img1.shape[1]
+    window = _gaussian_kernel(window_size, sigma, device=img1.device, dtype=img1.dtype)
+    window = window.expand(C, 1, window_size, window_size)
+
+    # sem padding (valid), igual ao comportamento padrao do skimage
+    mu1 = F.conv2d(img1, window, groups=C)
+    mu2 = F.conv2d(img2, window, groups=C)
+
+    mu1_sq, mu2_sq, mu1_mu2 = mu1 ** 2, mu2 ** 2, mu1 * mu2
+
+    sigma1_sq = F.conv2d(img1 * img1, window, groups=C) - mu1_sq
+    sigma2_sq = F.conv2d(img2 * img2, window, groups=C) - mu2_sq
+    sigma12 = F.conv2d(img1 * img2, window, groups=C) - mu1_mu2
+
+    C1 = (0.01 * data_range) ** 2
+    C2 = (0.03 * data_range) ** 2
+
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / (
+        (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
+    )
+    return ssim_map.mean().item()
+
+
 def _rgb_to_y(rgb):
-    """Converte tensor RGB para canal Y (luminância) em formato YCbCr.
-
-    Fórmula padrão ITU-R BT.601:
-    Y = 0.299*R + 0.587*G + 0.114*B
-
-    Parâmetros
-    ----------
-    rgb : torch.Tensor
-        Tensor RGB em [0, 1], shape [B, 3, H, W] ou [3, H, W]
-
-    Retorna
-    -------
-    torch.Tensor
-        Canal Y, shape [B, 1, H, W] ou [1, H, W]
-    """
-    # Adiciona batch dimension se necessário
+    # converte rgb para canal y (luminancia), formato ycbcr
     if rgb.dim() == 3:
         rgb = rgb.unsqueeze(0)
 
-    # Conversão ITU-R BT.601
+    # conversao itu-r bt.601
     y = 0.299 * rgb[:, 0:1, :, :] + 0.587 * rgb[:, 1:2, :, :] + 0.114 * rgb[:, 2:3, :, :]
     return y
 
 
 def _crop_border(img, border_size):
-    """Remove borda de uma imagem.
-
-    Prática comum em SR para evitar penalizar artefatos de borda.
-
-    Parâmetros
-    ----------
-    img : torch.Tensor
-        Tensor [B, C, H, W]
-    border_size : int
-        Tamanho da borda a remover em cada lado
-
-    Retorna
-    -------
-    torch.Tensor
-        Imagem com borda removida
-    """
+    # remove borda da imagem, pratica comum em sr
     if border_size == 0:
         return img
     b = border_size
     return img[:, :, b:-b, b:-b]
 
-
-# ============================================================================
-# MÉTRICAS BÁSICAS (RGB)
-# ============================================================================
+# metricas basicas (rgb)
 
 def calc_psnr(sr, hr, max_val=1.0):
-    """PSNR em RGB. Rápido, usado durante treino."""
+    # psnr em rgb, usado durante treino
     mse = F.mse_loss(sr, hr)
     if mse == 0:
         return float("inf")
@@ -83,12 +80,9 @@ def calc_psnr(sr, hr, max_val=1.0):
 
 
 def calc_ssim(sr, hr, C1=0.01 ** 2, C2=0.03 ** 2):
-    """SSIM simplificado, global (não janelado) em RGB.
-
-    Útil para monitorar o treino rapidamente, mas NÃO é o SSIM padrão da
-    literatura (que é calculado em janelas locais). Para resultados
-    finais do relatório, prefira calc_ssim_y() ou calc_ssim_skimage().
-    """
+    # ssim simplificado, global, em rgb
+    # rapido pro treino, mas nao e o ssim janelado da literatura
+    # pra relatorio final, usar calc_ssim_y ou calc_ssim_skimage
     mu_sr, mu_hr = sr.mean(), hr.mean()
     var_sr, var_hr = sr.var(), hr.var()
     cov = ((sr - mu_sr) * (hr - mu_hr)).mean()
@@ -100,47 +94,16 @@ def calc_ssim(sr, hr, C1=0.01 ** 2, C2=0.03 ** 2):
 
 
 def calc_ssim_skimage(sr, hr):
-    """SSIM janelado via skimage em RGB.
-
-    sr, hr: tensores [1, C, H, W] ou [C, H, W] em [0, 1].
-    Mais preciso que calc_ssim(), mas mais lento.
-    """
-    from skimage.metrics import structural_similarity as ssim_fn
-
-    # Garante formato correto
-    if sr.dim() == 4:
-        sr = sr.squeeze(0)
-    if hr.dim() == 4:
-        hr = hr.squeeze(0)
-
-    sr_np = sr.permute(1, 2, 0).cpu().numpy().clip(0, 1)
-    hr_np = hr.permute(1, 2, 0).cpu().numpy().clip(0, 1)
-
-    return ssim_fn(sr_np, hr_np, channel_axis=2, data_range=1.0)
+    # ssim janelado em rgb, mais preciso e mais lento que calc_ssim
+    sr = sr.clamp(0, 1)
+    hr = hr.clamp(0, 1)
+    return _ssim_windowed(sr, hr, data_range=1.0)
 
 
-# ============================================================================
-# MÉTRICAS NO CANAL Y (PADRÃO DOS PAPERS)
-# ============================================================================
+# metricas no canal y (padrao dos papers)
 
 def calc_psnr_y(sr, hr, max_val=1.0):
-    """PSNR no canal Y (luminância) - PADRÃO DOS PAPERS.
-
-    Métrica padrão usada em papers de SR (Dong, Lim, Wang).
-    Calcula PSNR apenas no canal Y, ignorando Cb/Cr.
-
-    Parâmetros
-    ----------
-    sr, hr : torch.Tensor
-        Tensores RGB em [0, 1], shape [B, 3, H, W]
-    max_val : float
-        Valor máximo (1.0 para [0, 1], 255.0 para [0, 255])
-
-    Retorna
-    -------
-    float
-        PSNR em dB
-    """
+    # psnr no canal y, padrao usado em papers de sr (dong, lim, wang)
     sr_y = _rgb_to_y(sr)
     hr_y = _rgb_to_y(hr)
 
@@ -151,57 +114,21 @@ def calc_psnr_y(sr, hr, max_val=1.0):
 
 
 def calc_ssim_y(sr, hr):
-    """SSIM janelado no canal Y (luminância) - PADRÃO DOS PAPERS.
+    # ssim janelado no canal y, padrao usado em papers de sr
+    sr_y = _rgb_to_y(sr)
+    hr_y = _rgb_to_y(hr)
 
-    Métrica padrão usada em papers de SR.
-    Converte para Y, depois calcula SSIM via skimage (mais preciso).
+    # usa a primeira imagem do batch
+    sr_y0 = sr_y[0:1].clamp(0, 1)
+    hr_y0 = hr_y[0:1].clamp(0, 1)
 
-    Parâmetros
-    ----------
-    sr, hr : torch.Tensor
-        Tensores RGB em [0, 1], shape [B, 3, H, W] ou [3, H, W]
-
-    Retorna
-    -------
-    float
-        SSIM no intervalo [-1, 1]
-    """
-    from skimage.metrics import structural_similarity as ssim_fn
-
-    sr_y = _rgb_to_y(sr).squeeze(1)  # [B, H, W]
-    hr_y = _rgb_to_y(hr).squeeze(1)  # [B, H, W]
-
-    # Calcula SSIM na primeira imagem do batch (ou única imagem)
-    sr_np = sr_y[0].cpu().numpy().clip(0, 1)
-    hr_np = hr_y[0].cpu().numpy().clip(0, 1)
-
-    return ssim_fn(sr_np, hr_np, data_range=1.0)
+    return _ssim_windowed(sr_y0, hr_y0, data_range=1.0)
 
 
-# ============================================================================
-# MÉTRICAS COM CROP DE BORDA
-# ============================================================================
+# metricas com crop de borda
 
 def calc_psnr_y_border(sr, hr, border_size=4, max_val=1.0):
-    """PSNR no canal Y ignorando borda.
-
-    Prática comum em SR: remove pixels de borda (tamanho = scale factor)
-    para evitar penalizar artefatos inerentes de borda.
-
-    Parâmetros
-    ----------
-    sr, hr : torch.Tensor
-        Tensores RGB em [0, 1]
-    border_size : int
-        Pixels a remover de cada lado (padrão: 4 para scale=4x)
-    max_val : float
-        Valor máximo
-
-    Retorna
-    -------
-    float
-        PSNR em dB
-    """
+    # psnr no canal y ignorando borda (tamanho = fator de escala)
     sr_y = _rgb_to_y(sr)
     hr_y = _rgb_to_y(hr)
 
@@ -215,60 +142,24 @@ def calc_psnr_y_border(sr, hr, border_size=4, max_val=1.0):
 
 
 def calc_ssim_y_border(sr, hr, border_size=4):
-    """SSIM no canal Y ignorando borda.
+    # ssim no canal y ignorando borda
+    sr_y = _rgb_to_y(sr)
+    hr_y = _rgb_to_y(hr)
 
-    Parâmetros
-    ----------
-    sr, hr : torch.Tensor
-        Tensores RGB em [0, 1]
-    border_size : int
-        Pixels a remover de cada lado
+    sr_y = _crop_border(sr_y, border_size)
+    hr_y = _crop_border(hr_y, border_size)
 
-    Retorna
-    -------
-    float
-        SSIM
-    """
-    from skimage.metrics import structural_similarity as ssim_fn
+    sr_y0 = sr_y[0:1].clamp(0, 1)
+    hr_y0 = hr_y[0:1].clamp(0, 1)
 
-    sr_y = _rgb_to_y(sr).squeeze(1)  # [B, H, W]
-    hr_y = _rgb_to_y(hr).squeeze(1)  # [B, H, W]
-
-    sr_y = _crop_border(sr_y.unsqueeze(1), border_size).squeeze(1)
-    hr_y = _crop_border(hr_y.unsqueeze(1), border_size).squeeze(1)
-
-    sr_np = sr_y[0].cpu().numpy().clip(0, 1)
-    hr_np = hr_y[0].cpu().numpy().clip(0, 1)
-
-    return ssim_fn(sr_np, hr_np, data_range=1.0)
+    return _ssim_windowed(sr_y0, hr_y0, data_range=1.0)
 
 
-# ============================================================================
-# MÉTRICAS PERCEPTUAIS (Opcional - requer torchvision)
-# ============================================================================
+# metrica perceptual (opcional, requer lpips)
 
 def calc_lpips(sr, hr, net='alex', version='0.1'):
-    """LPIPS (Learned Perceptual Image Patch Similarity).
-
-    Métrica perceptual que correlaciona MUITO melhor com percepção humana
-    que PSNR/SSIM. Usa features pré-treinadas de uma rede neural.
-
-    Requer: pip install lpips
-
-    Parâmetros
-    ----------
-    sr, hr : torch.Tensor
-        Tensores RGB em [0, 1], shape [B, 3, H, W]
-    net : str
-        Rede backbone: 'alex', 'vgg', 'squeeze'
-    version : str
-        Versão do modelo
-
-    Retorna
-    -------
-    float
-        LPIPS score (0-1, lower is better)
-    """
+    # lpips, correlaciona melhor com percepcao humana que psnr/ssim
+    # requer: pip install lpips
     try:
         import lpips
         device = sr.device
@@ -277,22 +168,18 @@ def calc_lpips(sr, hr, net='alex', version='0.1'):
             score = loss_fn(sr, hr).item()
         return score
     except ImportError:
-        print("⚠️  LPIPS não instalado. Use: pip install lpips")
+        print("lpips nao instalado. use: pip install lpips")
         return None
 
 
 if __name__ == "__main__":
-    """Teste rápido das métricas."""
-    print("Testando métricas...")
-
-    # Dummy data
+    # teste rapido das metricas
     sr = torch.rand(1, 3, 64, 64)
     hr = torch.rand(1, 3, 64, 64)
 
-    print(f"PSNR (RGB):           {calc_psnr(sr, hr):.2f} dB")
-    print(f"PSNR (Y):             {calc_psnr_y(sr, hr):.2f} dB")
-    print(f"PSNR (Y + border):    {calc_psnr_y_border(sr, hr, border_size=4):.2f} dB")
-    print(f"SSIM (RGB):           {calc_ssim(sr, hr):.4f}")
-    print(f"SSIM (Y):             {calc_ssim_y(sr, hr):.4f}")
-    print(f"SSIM (Y + border):    {calc_ssim_y_border(sr, hr, border_size=4):.4f}")
-    print("✅ Todas as métricas funcionando!")
+    print(f"psnr (rgb): {calc_psnr(sr, hr):.2f} db")
+    print(f"psnr (y): {calc_psnr_y(sr, hr):.2f} db")
+    print(f"psnr (y + border): {calc_psnr_y_border(sr, hr, border_size=4):.2f} db")
+    print(f"ssim (rgb): {calc_ssim(sr, hr):.4f}")
+    print(f"ssim (y): {calc_ssim_y(sr, hr):.4f}")
+    print(f"ssim (y + border): {calc_ssim_y_border(sr, hr, border_size=4):.4f}")
