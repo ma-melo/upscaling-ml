@@ -197,16 +197,19 @@ class SRDatasetAugmented(Dataset):
 class SRDatasetMultiScale(Dataset):
     """Dataset que treina em múltiplas escalas (2x, 3x, 4x).
 
-    A cada epoch, escolhe aleatoriamente uma escala diferente.
+    A cada __getitem__, escolhe aleatoriamente uma escala diferente.
     Útil para criar modelos mais robustos que funcionam em várias escalas.
+
+    IMPORTANTE: Retorna apenas (lr, hr) como as outras datasets.
+    A escala é escolhida internamente mas não retornada (conhecido em tempo de criação).
     """
 
-    def __init__(self, folder, patch_size=96, scales=[2, 3, 4]):
+    def __init__(self, folder, patch_size=96, scales=None):
         self.files = sorted(Path(folder).glob("*.png"))
         if len(self.files) == 0:
             raise FileNotFoundError(f"Nenhum .png encontrado em '{folder}'.")
         self.patch_size = patch_size
-        self.scales = scales
+        self.scales = scales if scales is not None else [2, 3, 4]
 
     def __len__(self):
         return len(self.files)
@@ -233,16 +236,14 @@ class SRDatasetMultiScale(Dataset):
         if angle != 0:
             hr = hr.rotate(angle)
 
-        # Escolhe escala aleatória
+        # Escolhe escala aleatória e gera LR
         scale = random.choice(self.scales)
-
-        # Gera LR com a escala escolhida
         lr = hr.resize(
             (self.patch_size // scale, self.patch_size // scale),
             Image.BICUBIC,
         )
 
-        return TF.to_tensor(lr), TF.to_tensor(hr), scale
+        return TF.to_tensor(lr), TF.to_tensor(hr)
 
 
 class SRBenchmarkDataset(Dataset):

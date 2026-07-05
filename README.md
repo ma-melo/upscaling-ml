@@ -140,23 +140,94 @@ Discriminador: Input → [Conv layers with stride] → Dense layers → Realista
 
 ```
 upscaling-ml/
-├── models.py              # Implementação das 3 arquiteturas
-├── datasets.py            # Carregamento de DIV2K, Set5, Set14, BSD100, Urban100
-├── train.py              # Loop de treino/avaliação genérico (fit, train_one_epoch, evaluate)
-├── metrics.py            # PSNR, SSIM (versão rápida + skimage)
-├── train-test.py         # Smoke test rápido com dados sintéticos
-├── train-models.py       # Script de treino de múltiplos modelos em sequência
-├── converter.py          # Utilitários de conversão de formatos
-├── c_image.py            # Utilitários de processamento de imagens
-├── melhorar_qualidade.py # Experimentos com pós-processamento
-├── edsrgan_model.ipynb   # Notebook de treino/exploração do ESRGAN
-├── upscaling(v7).ipynb   # Notebook principal com resultados consolidados
-├── datasets/             # Dados (DIV2K, Set5, Set14, BSD100, Urban100)
-├── outputs/              # Checkpoints e históricos de treino (experimentos)
-├── resultados_esrgan/    # Imagens de saída do ESRGAN
-├── treinos_antigos/      # Arquivos históricos de treinos anteriores
-└── README.md             # Este arquivo
+├── 00_guia_analise_comparacao.ipynb    # 📖 COMECE AQUI - Análise exploratória e comparação
+├── 01_train_srcnn.ipynb                # Treino do SRCNN (1h)
+├── 02_train_edsr.ipynb                 # Treino do EDSR-baseline (3h)
+├── 03_train_esrgan.ipynb               # Treino do ESRGAN (12h+)
+├── models.py                           # Implementação das 3 arquiteturas
+├── datasets.py                         # Carregamento de DIV2K, Set5, Set14, BSD100, Urban100
+├── train.py                            # Loop de treino/avaliação genérico (fit, train_one_epoch, evaluate)
+├── metrics.py                          # PSNR, SSIM (versão rápida + skimage)
+├── edsrgan_model.ipynb                 # Notebook histórico de exploração
+├── datasets/                           # Dados (DIV2K, Set5, Set14, BSD100, Urban100)
+├── outputs/                            # Checkpoints e históricos de treino (experimentos)
+└── README.md                           # Este arquivo
 ```
+
+---
+
+## 📖 Guia Prático: Como Usar os Notebooks
+
+### 🚀 Início Rápido (5 min)
+
+1. **Abra `00_guia_analise_comparacao.ipynb`**
+   - Veja análise exploratória dos datasets
+   - Entenda a estrutura dos dados
+   - Visualize exemplos de patches
+
+2. **Depois de treinar os modelos** (veja próximas seções)
+   - Execute as células finais de `00_guia_analise_comparacao.ipynb`
+   - Compare resultados dos 3 modelos
+   - Gere tabelas e gráficos de comparação
+
+---
+
+### 🎯 Para Treinar os Modelos
+
+**Opção A: Treinar um por um (recomendado)**
+
+1. **SRCNN** (~1 hora em GPU)
+   - Abra `01_train_srcnn.ipynb`
+   - Execute todas as células
+   - Modelo salvo em `outputs/SRCNN_2026-07-05/srcnn_final.pt`
+
+2. **EDSR-Baseline** (~3 horas em GPU)
+   - Abra `02_train_edsr.ipynb`
+   - Execute todas as células
+   - Modelo salvo em `outputs/EDSR_2026-07-05/edsr_final.pt`
+
+3. **ESRGAN** (~12 horas em GPU)
+   - Abra `03_train_esrgan.ipynb`
+   - Execute todas as células
+   - Modelos salvos em `outputs/ESRGAN_2026-07-05/`
+   - ⏱️ **Dica:** Deixe rodando à noite
+
+**Opção B: Usar modelos pré-treinados**
+- Se os modelos já existem em `outputs/`, pule direto para `00_guia_analise_comparacao.ipynb`
+
+---
+
+### 🔧 Customizações Comuns
+
+**Reduzir tempo de treino (teste rápido):**
+```python
+n_epochs = 10  # Em vez de 100
+BATCH_SIZE = 8  # Em vez de 16
+```
+
+**Usar GPU diferente ou CPU:**
+```python
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+```
+
+**Monitorar treino em tempo real:**
+```bash
+# Em outro terminal:
+tensorboard --logdir outputs
+# Acesse: http://localhost:6006
+```
+
+---
+
+### 📊 Comparação de Resultados
+
+Após treinar os 3 modelos, execute `00_guia_analise_comparacao.ipynb` para:
+- ✅ Tabela comparativa (PSNR, SSIM em Set5, Set14, BSD100, Urban100)
+- ✅ Visualização lado-a-lado (HR original, Bicubic, SRCNN, EDSR, ESRGAN)
+- ✅ Zoom em detalhes de texturas
+- ✅ Mapas de erro absoluto
+
+---
 
 ---
 

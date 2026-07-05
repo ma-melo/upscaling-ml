@@ -3,12 +3,17 @@ Arquiteturas de super-resolução.
 
 SRCNN -> baseline simples (Dong et al., 2016): 3 camadas conv.
          Espera receber a imagem LR já upscalada via bicubic.
+
+NOTA: As variantes SRCNNAugmented, SRCNNMultiScale, etc. têm a mesma
+      arquitetura que SRCNN. As diferenças estão APENAS no dataset
+      usado durante treino (augmentation, múltiplas escalas, etc).
+      Portanto, essa classe base pode ser reutilizada para todos.
 """
 
-import torch.nn as nn
 import torch
-from torchvision import models
+import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 
 
 class SRCNN(nn.Module):
@@ -16,6 +21,10 @@ class SRCNN(nn.Module):
 
     Arquitetura: Conv(9) → ReLU → Conv(1) → ReLU → Conv(5)
     Entrada: imagem LR já upscalada via bicúbica
+
+    Nota: Esta classe é reutilizada para todas as variantes
+    (Augmented, MultiScale, etc), pois a arquitetura é idêntica.
+    As diferenças estão no dataset/augmentação durante treino.
     """
     def __init__(self):
         super().__init__()
@@ -23,10 +32,8 @@ class SRCNN(nn.Module):
         self.net = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=9, padding=4),
             nn.ReLU(inplace=True),
-
             nn.Conv2d(64, 32, kernel_size=1),
             nn.ReLU(inplace=True),
-
             nn.Conv2d(32, 3, kernel_size=5, padding=2),
         )
 
@@ -34,79 +41,14 @@ class SRCNN(nn.Module):
         return self.net(x)
 
 
-class SRCNNAugmented(nn.Module):
-    """SRCNN com arquitetura idêntica, mas treinada com data augmentation robusta.
-
-    A diferença está no dataset (SRDatasetAugmented) usado durante treino.
-    Isso aumenta a robustez sem mudar a arquitetura.
-    """
-    def __init__(self):
-        super().__init__()
-
-        self.net = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=9, padding=4),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(64, 32, kernel_size=1),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(32, 3, kernel_size=5, padding=2),
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-class SRCNNMultiScale(nn.Module):
-    """SRCNN que treina em múltiplas escalas (2x, 3x, 4x).
-
-    Mantém a mesma arquitetura, mas durante treino recebe:
-    - imagens upscaladas em diferentes escalas (2x, 3x, 4x)
-    - criando um modelo mais generalista
-    """
-    def __init__(self):
-        super().__init__()
-
-        self.net = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=9, padding=4),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(64, 32, kernel_size=1),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(32, 3, kernel_size=5, padding=2),
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-class SRCNNAugmentedMultiScale(nn.Module):
-    """SRCNN com data augmentation robusta E múltiplas escalas.
-
-    Combina o melhor dos dois mundos:
-    - Dataset com augmentações diversas (blur, ruído, contraste)
-    - Treino em escalas 2x, 3x, 4x
-    - Modelo mais robusto e generalista
-    """
-    def __init__(self):
-        super().__init__()
-
-        self.net = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=9, padding=4),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(64, 32, kernel_size=1),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(32, 3, kernel_size=5, padding=2),
-        )
-
-    def forward(self, x):
-        return self.net(x)
+# Aliases para compatibilidade (reutilizam a mesma arquitetura)
+SRCNNAugmented = SRCNN
+SRCNNMultiScale = SRCNN
+SRCNNAugmentedMultiScale = SRCNN
 
 
 class ResidualBlock(nn.Module):
+    """Bloco residual padrão: Conv → ReLU → Conv + skip."""
     def __init__(self, channels):
         super().__init__()
         self.block = nn.Sequential(
@@ -120,21 +62,22 @@ class ResidualBlock(nn.Module):
 
 
 class EDSRBaseline(nn.Module):
+    """EDSR-Baseline (Lim et al., 2017).
+
+    Arquitetura: Conv → [ResidualBlocks] → Conv + skip → PixelShuffle(2×2) → Conv
+    Entrada: LR "pequeno", upsampling feito internamente
+    """
     def __init__(self, num_features=64, num_blocks=16, scale=4):
         super().__init__()
         self.scale = scale
         self.num_features = num_features
 
         self.head = nn.Conv2d(3, num_features, kernel_size=3, padding=1)
-
         self.body = nn.Sequential(
             *[ResidualBlock(num_features) for _ in range(num_blocks)]
         )
-
         self.tail = nn.Conv2d(num_features, num_features, kernel_size=3, padding=1)
-
         self.upsample = self._make_upsampler(scale)
-
         self.out = nn.Conv2d(num_features, 3, kernel_size=3, padding=1)
 
     def _make_upsampler(self, scale):
@@ -155,18 +98,16 @@ class EDSRBaseline(nn.Module):
 
     def forward(self, x):
         x = self.head(x)
-
         res = x
         x = self.body(x)
         x = self.tail(x)
         x = x + res
-
         x = self.upsample(x)
         x = self.out(x)
-
         return x
     
 class ResidualDenseBlock_5C(nn.Module):
+    """Residual Dense Block com concatenação densa (como em ESRGAN)."""
     def __init__(self, nf=64, gc=32):
         super().__init__()
         self.conv1 = nn.Conv2d(nf, gc, 3, 1, 1)
@@ -185,6 +126,7 @@ class ResidualDenseBlock_5C(nn.Module):
         return x5 * 0.2 + x
 
 class RRDB(nn.Module):
+    """Residual Residual Dense Block (como em ESRGAN): 3× RDB com skip."""
     def __init__(self, nf=64, gc=32):
         super().__init__()
         self.RDB1 = ResidualDenseBlock_5C(nf, gc)
@@ -195,6 +137,7 @@ class RRDB(nn.Module):
         return (self.RDB3(self.RDB2(self.RDB1(x)))) * 0.2 + x
 
 class ESRGANGenerator(nn.Module):
+    """ESRGAN Generator com 23 blocos RRDB + Upsampling (Wang et al., 2018)."""
     def __init__(self, in_nc=3, out_nc=3, nf=64, nb=23, gc=32, scale=4):
         super().__init__()
         self.conv_first = nn.Conv2d(in_nc, nf, 3, 1, 1)
@@ -215,6 +158,7 @@ class ESRGANGenerator(nn.Module):
         return self.conv_last(self.lrelu(self.HRconv(fea)))
 
 class VGGDiscriminator(nn.Module):
+    """Discriminador com arquitetura VGG para ESRGAN."""
     def __init__(self, in_nc=3, nf=32):
         super().__init__()
         self.features = nn.Sequential(
@@ -235,13 +179,14 @@ class VGGDiscriminator(nn.Module):
         return self.classifier(self.features(x))
 
 class VGGFeatureExtractor(nn.Module):
+    """Feature extractor com VGG19 pré-treinado para ESRGAN Perceptual Loss."""
     def __init__(self):
         super().__init__()
         vgg19 = models.vgg19(weights=models.VGG19_Weights.DEFAULT)
         self.features = nn.Sequential(*list(vgg19.features.children())[:35]).eval()
-        for param in self.features.parameters(): 
+        for param in self.features.parameters():
             param.requires_grad = False
-            
+
         self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
 
