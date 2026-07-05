@@ -8,8 +8,8 @@ from PIL import Image
 from pathlib import Path
 
 #Caminhos
-IMAGEM = "datasets/DIV2K_valid_HR/0804.png"
-CAMINHO_PESOS = "resultados_esrgan/esrgan_final_interpolated.pth"
+IMAGEM = "datasets/DIV2K_valid_HR/0801.png"
+CAMINHO_PESOS = "outputs/ESRGAN_2026-07-05/esrgan_final_interpolated.pth"
 PASTA_SAIDA = Path("imagens_saida")
 PASTA_SAIDA.mkdir(exist_ok=True)
 
@@ -67,7 +67,7 @@ class ESRGANGenerator(nn.Module):
 
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 #=========================
 # Saídas
