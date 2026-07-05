@@ -1,14 +1,8 @@
-"""
-Datasets para o pipeline de super-resolução.
-
-SRDataset         -> treino: crop aleatório + augmentação (flip + rotação)
-SREvalDataset      -> avaliação simples: imagem inteira, LR gerado via bicubic
-                       (usar quando não há pares LR/HR oficiais prontos)
-SRBenchmarkDataset -> avaliação com benchmarks padrão (Set5, Set14, BSD100,
-                       Urban100) no formato "image_SRF_<scale>", que já vem
-                       com pares HR/LR prontos -- usar este para gerar
-                       números comparáveis com os papers de referência.
-"""
+# preparacao dos datasets para o pipeline de super-resolucao
+#
+# srdataset -> treino: crop aleatorio + augmentacao (flip + rotacao)
+# srevaldataset -> avaliacao simples: imagem inteira, lr gerado via bicubic (usar quando nao ha pares lr/hr oficiais prontos)
+# srbenchmarkdataset -> avaliacao com benchmarks padrao (set5, set14, bsd100, urban100) no formato "image_srf_<scale>", ja vem com pares hr/lr prontos
 
 import random
 from pathlib import Path
@@ -21,12 +15,12 @@ import torchvision.transforms as transforms
 
 
 class SRDataset(Dataset):
-    """Dataset de treino: extrai patches HR aleatórios e gera o LR correspondente."""
+    # dataset de treino: extrai patches hr aleatorios e gera o lr correspondente
 
     def __init__(self, folder, patch_size=96, scale=4):
         self.files = sorted(Path(folder).glob("*.png"))
         if len(self.files) == 0:
-            raise FileNotFoundError(f"Nenhum .png encontrado em '{folder}'. Verifique o caminho.")
+            raise FileNotFoundError(f"nenhum .png encontrado em '{folder}'. verifique o caminho.")
         self.patch_size = patch_size
         self.scale = scale
 
@@ -37,7 +31,7 @@ class SRDataset(Dataset):
         img = Image.open(self.files[idx]).convert("RGB")
         w, h = img.size
 
-        # Guard: imagens menores que patch_size quebrariam o randint.
+        # guard: imagens menores que patch_size quebrariam o randint
         if w < self.patch_size or h < self.patch_size:
             img = img.resize(
                 (max(w, self.patch_size), max(h, self.patch_size)),
@@ -50,7 +44,7 @@ class SRDataset(Dataset):
 
         hr = img.crop((x, y, x + self.patch_size, y + self.patch_size))
 
-        # augmentação: flip horizontal + rotações de 90°
+        # flip horizontal + rotacoes de 90 graus
         if random.random() < 0.5:
             hr = TF.hflip(hr)
         angle = random.choice([0, 90, 180, 270])
@@ -66,18 +60,15 @@ class SRDataset(Dataset):
 
 
 class SREvalDataset(Dataset):
-    """Dataset de avaliação simples: usa a imagem inteira, gera o LR via bicubic.
-
-    Use esta classe quando você só tem imagens HR soltas (sem pares LR
-    oficiais prontos) -- por exemplo DIV2K_valid_HR sem subpastas image_SRF_*.
-    """
+    # dataset de avaliacao simples: usa a imagem inteira, gera o lr via bicubic
+    # usado quando so tem imagens hr soltas (sem pares lr oficiais), tipo div2k_valid_hr
 
     def __init__(self, folder, scale=4):
         self.files = sorted(Path(folder).glob("*.png"))
         if len(self.files) == 0:
             raise FileNotFoundError(
-                f"Nenhum .png encontrado em '{folder}'. Verifique o caminho "
-                f"(ex: pasta extraída corretamente)."
+                f"nenhum .png encontrado em '{folder}'. verifique o caminho "
+                f"(ex: pasta extraida corretamente)."
             )
         self.scale = scale
 
@@ -88,7 +79,7 @@ class SREvalDataset(Dataset):
         img = Image.open(self.files[idx]).convert("RGB")
         w, h = img.size
 
-        # garante que w,h sejam múltiplos do scale (evita erro de dimensão)
+        # garante que w,h sejam multiplos do scale (evita erro de dimensao)
         w = w - (w % self.scale)
         h = h - (h % self.scale)
         hr = img.crop((0, 0, w, h))
@@ -99,22 +90,14 @@ class SREvalDataset(Dataset):
 
 
 class SRDatasetAugmented(Dataset):
-    """Dataset de treino com augmentação robusta para super-resolução.
-
-    Técnicas de augmentação incluem:
-    - Flip horizontal (50%)
-    - Rotações arbitrárias (-45° a +45°)
-    - Zoom aleatório (0.8x a 1.2x)
-    - Brightness/Contrast
-    - Gaussian blur (simula degradação)
-    - Ruído Gaussiano (robustez)
-    - Color jittering
-    """
+    # dataset de treino com augmentacao robusta
+    # tecnicas: flip horizontal, rotacao arbitraria, zoom aleatorio,
+    # brightness/contrast, gaussian blur, color jittering
 
     def __init__(self, folder, patch_size=96, scale=4):
         self.files = sorted(Path(folder).glob("*.png"))
         if len(self.files) == 0:
-            raise FileNotFoundError(f"Nenhum .png encontrado em '{folder}'.")
+            raise FileNotFoundError(f"nenhum .png encontrado em '{folder}'.")
         self.patch_size = patch_size
         self.scale = scale
         self.color_jitter = transforms.ColorJitter(
@@ -125,24 +108,24 @@ class SRDatasetAugmented(Dataset):
         return len(self.files)
 
     def _apply_augmentations(self, img):
-        """Aplica pipeline completo de augmentações."""
+        # aplica a lista de tecnicas de augmentacao
 
-        # 1. Flip horizontal (50%)
+        # flip horizontal (50%)
         if random.random() < 0.5:
             img = TF.hflip(img)
 
-        # 2. Rotações arbitrárias (-45° a +45°)
+        # rotacao arbitraria (-45 a +45)
         if random.random() < 0.7:
             angle = random.uniform(-45, 45)
             img = TF.rotate(img, angle, expand=False)
 
-        # 3. Zoom/Crop aleatório
+        # zoom/crop aleatorio
         if random.random() < 0.6:
             scale_factor = random.uniform(0.85, 1.15)
             new_size = int(self.patch_size * scale_factor)
             img = img.resize((new_size, new_size), Image.BICUBIC)
 
-        # 4. Brightness/Contrast
+        # brightness/contrast
         if random.random() < 0.5:
             brightness_factor = random.uniform(0.85, 1.15)
             enhancer = ImageEnhance.Brightness(img)
@@ -153,12 +136,12 @@ class SRDatasetAugmented(Dataset):
             enhancer = ImageEnhance.Contrast(img)
             img = enhancer.enhance(contrast_factor)
 
-        # 5. Gaussian blur (simula degradação real)
+        # gaussian blur (simula degradacao real)
         if random.random() < 0.4:
             radius = random.uniform(0.5, 1.5)
             img = img.filter(ImageFilter.GaussianBlur(radius=radius))
 
-        # 6. Color jittering
+        # color jittering
         if random.random() < 0.5:
             img = self.color_jitter(img)
 
@@ -179,13 +162,12 @@ class SRDatasetAugmented(Dataset):
         y = random.randint(0, h - self.patch_size)
         hr = img.crop((x, y, x + self.patch_size, y + self.patch_size))
 
-        # Aplica augmentações
+        # aplica augmentacoes
         hr = self._apply_augmentations(hr)
 
-        # Redimensiona para o patch_size (pode ter crescido/diminuído)
+        # redimensiona pro patch_size (pode ter crescido/diminuido)
         hr = hr.resize((self.patch_size, self.patch_size), Image.BICUBIC)
 
-        # Gera LR
         lr = hr.resize(
             (self.patch_size // self.scale, self.patch_size // self.scale),
             Image.BICUBIC,
@@ -195,19 +177,14 @@ class SRDatasetAugmented(Dataset):
 
 
 class SRDatasetMultiScale(Dataset):
-    """Dataset que treina em múltiplas escalas (2x, 3x, 4x).
-
-    A cada __getitem__, escolhe aleatoriamente uma escala diferente.
-    Útil para criar modelos mais robustos que funcionam em várias escalas.
-
-    IMPORTANTE: Retorna apenas (lr, hr) como as outras datasets.
-    A escala é escolhida internamente mas não retornada (conhecido em tempo de criação).
-    """
+    # dataset que treina em multiplas escalas (2x, 3x, 4x)
+    # a cada getitem, escolhe uma escala aleatoria diferente
+    # retorna so (lr, hr), a escala usada nao e retornada
 
     def __init__(self, folder, patch_size=96, scales=None):
         self.files = sorted(Path(folder).glob("*.png"))
         if len(self.files) == 0:
-            raise FileNotFoundError(f"Nenhum .png encontrado em '{folder}'.")
+            raise FileNotFoundError(f"nenhum .png encontrado em '{folder}'.")
         self.patch_size = patch_size
         self.scales = scales if scales is not None else [2, 3, 4]
 
@@ -229,14 +206,14 @@ class SRDatasetMultiScale(Dataset):
         y = random.randint(0, h - self.patch_size)
         hr = img.crop((x, y, x + self.patch_size, y + self.patch_size))
 
-        # Augmentação básica
+        # tratamento basico
         if random.random() < 0.5:
             hr = TF.hflip(hr)
         angle = random.choice([0, 90, 180, 270])
         if angle != 0:
             hr = hr.rotate(angle)
 
-        # Escolhe escala aleatória e gera LR
+        # escolhe escala aleatoria e gera lr
         scale = random.choice(self.scales)
         lr = hr.resize(
             (self.patch_size // scale, self.patch_size // scale),
@@ -247,28 +224,17 @@ class SRDatasetMultiScale(Dataset):
 
 
 class SRBenchmarkDataset(Dataset):
-    """Lê pares HR/LR já prontos de um benchmark (Set5, Set14, BSD100, Urban100).
-
-    Espera uma estrutura como:
-        <folder>/img_001_SRF_4_HR.png
-        <folder>/img_001_SRF_4_LR.png
-        <folder>/img_002_SRF_4_HR.png
-        <folder>/img_002_SRF_4_LR.png
-        ...
-
-    Diferente do SREvalDataset (que gera o LR na hora via bicubic), aqui
-    usamos o LR oficial do benchmark -- o que torna os resultados
-    comparáveis com os papers de referência (Dong, Lim, Wang).
-
-    Parâmetros
-    ----------
-    folder : str | Path
-        Caminho para a pasta "image_SRF_<scale>" (ex: "datasets/Set5/image_SRF_4")
-    scale : int
-        Fator de escala esperado. É validado contra a razão real entre
-        LR e HR; se não corresponder, um aviso é emitido (provável pasta
-        errada, ex: passou scale=4 mas a pasta é image_SRF_3).
-    """
+    # carrega pares hr/lr prontos de um benchmark (set5, set14, bsd100, urban100)
+    #
+    # espera uma estrutura como:
+    #   <folder>/img_001_SRF_4_HR.png
+    #   <folder>/img_001_SRF_4_LR.png
+    #   <folder>/img_002_SRF_4_HR.png
+    #   <folder>/img_002_SRF_4_LR.png
+    #
+    # diferente do srevaldataset (que gera o lr na hora via bicubic), aqui
+    # usa o lr oficial do benchmark, o que deixa os resultados comparaveis
+    # com os papers de referencia (dong, lim, wang)
 
     def __init__(self, folder, scale=4):
         folder = Path(folder)
@@ -276,20 +242,20 @@ class SRBenchmarkDataset(Dataset):
 
         if len(hr_files) == 0:
             raise FileNotFoundError(
-                f"Nenhum arquivo '*_HR.png' encontrado em '{folder}'. "
-                f"Confirme o caminho (ex: 'datasets/Set5/image_SRF_{scale}')."
+                f"nenhum arquivo '*_HR.png' encontrado em '{folder}'. "
+                f"confirme o caminho (ex: 'datasets/Set5/image_SRF_{scale}')."
             )
 
         self.pairs = []
         for hr_path in hr_files:
-            # opera só no nome do arquivo (não no caminho completo), para
-            # evitar substituições indesejadas caso o caminho contenha "_HR.png"
+            # opera so no nome do arquivo, nao no caminho completo, pra
+            # evitar substituicao indesejada caso o caminho contenha "_HR.png"
             lr_name = hr_path.name.replace("_HR.png", "_LR.png")
             lr_path = hr_path.with_name(lr_name)
 
             if not lr_path.exists():
                 raise FileNotFoundError(
-                    f"Par LR não encontrado para '{hr_path.name}' "
+                    f"par lr nao encontrado para '{hr_path.name}' "
                     f"(esperado: '{lr_path.name}')."
                 )
             self.pairs.append((lr_path, hr_path))
@@ -309,15 +275,15 @@ class SRBenchmarkDataset(Dataset):
         lw, lh = lr.size
         hw, hh = hr.size
 
-        # Validação: a razão real HR/LR deve corresponder ao scale informado.
-        # Só checa uma vez (no primeiro item) para não gerar warnings repetidos.
+        # valida se a razao real hr/lr bate com o scale informado
+        # so checa uma vez (primeiro item) pra nao repetir aviso
         if not self._scale_checked:
             real_ratio_w = hw / lw
             real_ratio_h = hh / lh
             if abs(real_ratio_w - self.scale) > 0.5 or abs(real_ratio_h - self.scale) > 0.5:
                 print(
-                    f"[AVISO] scale={self.scale} informado, mas a razão real "
-                    f"HR/LR é ~{real_ratio_w:.2f}x. Confirme se a pasta "
+                    f"[aviso] scale={self.scale} informado, mas a razao real "
+                    f"hr/lr e ~{real_ratio_w:.2f}x. confirme se a pasta "
                     f"'{lr_path.parent}' corresponde ao fator de escala correto."
                 )
             self._scale_checked = True
