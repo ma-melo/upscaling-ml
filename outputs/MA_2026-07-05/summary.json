@@ -15,12 +15,12 @@
     "patch_size": 96,
     "learning_rate": 0.0001,
     "train_set": "DIV2K (800+ imagens)",
-    "device": "cuda"
+    "device": "mps"
   },
   "results": [
     {
       "Dataset": "Set5",
-      "SRCNN PSNR": "26.56",
+      "SRCNN PSNR": "26.57",
       "EDSR PSNR": "28.25",
       "SRCNN SSIM": "0.9797",
       "EDSR SSIM": "0.9866",
