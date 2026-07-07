@@ -43,10 +43,11 @@ SRCNNAugmentedMultiScale = SRCNN
 
 
 class ResidualBlock(nn.Module):
-    # bloco residual padrao: conv -> relu -> conv + skip
+    # bloco residual com escalamento residual para estabilidade (Lim et al., 2017)
 
-    def __init__(self, channels):
+    def __init__(self, channels, res_scale=0.1):
         super().__init__()
+        self.res_scale = res_scale
         self.block = nn.Sequential(
             nn.Conv2d(channels, channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -54,7 +55,7 @@ class ResidualBlock(nn.Module):
         )
 
     def forward(self, x):
-        return x + self.block(x)
+        return x + self.block(x) * self.res_scale
 
 
 class EDSRBaseline(nn.Module):
@@ -62,14 +63,14 @@ class EDSRBaseline(nn.Module):
     # arquitetura: conv -> [residual blocks] -> conv + skip -> pixelshuffle -> conv
     # entrada: lr pequeno, upsampling feito internamente
 
-    def __init__(self, num_features=64, num_blocks=16, scale=4):
+    def __init__(self, num_features=64, num_blocks=16, scale=4, res_scale=0.1):
         super().__init__()
         self.scale = scale
         self.num_features = num_features
 
         self.head = nn.Conv2d(3, num_features, kernel_size=3, padding=1)
         self.body = nn.Sequential(
-            *[ResidualBlock(num_features) for _ in range(num_blocks)]
+            *[ResidualBlock(num_features, res_scale=res_scale) for _ in range(num_blocks)]
         )
         self.tail = nn.Conv2d(num_features, num_features, kernel_size=3, padding=1)
         self.upsample = self._make_upsampler(scale)
@@ -82,6 +83,11 @@ class EDSRBaseline(nn.Module):
                 nn.PixelShuffle(2),
                 nn.Conv2d(self.num_features, self.num_features * 4, kernel_size=3, padding=1),
                 nn.PixelShuffle(2),
+            )
+        elif scale == 3:
+            return nn.Sequential(
+                nn.Conv2d(self.num_features, self.num_features * 9, kernel_size=3, padding=1),
+                nn.PixelShuffle(3),
             )
         elif scale == 2:
             return nn.Sequential(

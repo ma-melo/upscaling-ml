@@ -1,0 +1,41 @@
+Modelo,Descrição,Dataset,PSNR,SSIM
+SRCNN_Baseline,Original (flip + rot 90°),Set5,26.65,0.9801
+SRCNN_Augmented,Augmentação robusta,Set5,26.47,0.9799
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",Set5,26.66,0.9800
+SRCNN_AugmentedMultiScale,Augment + MultiScale,Set5,26.73,0.9803
+SRCNN_Baseline,Original (flip + rot 90°),Set14,24.21,0.9604
+SRCNN_Augmented,Augmentação robusta,Set14,24.17,0.9601
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",Set14,24.25,0.9606
+SRCNN_AugmentedMultiScale,Augment + MultiScale,Set14,24.29,0.9610
+SRCNN_Baseline,Original (flip + rot 90°),BSD100,24.74,0.9457
+SRCNN_Augmented,Augmentação robusta,BSD100,24.58,0.9437
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",BSD100,24.77,0.9457
+SRCNN_AugmentedMultiScale,Augment + MultiScale,BSD100,24.80,0.9461
+SRCNN_Baseline,Original (flip + rot 90°),Set5_2x,28.72,0.9883
+SRCNN_Augmented,Augmentação robusta,Set5_2x,27.84,0.9857
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",Set5_2x,29.51,0.9904
+SRCNN_AugmentedMultiScale,Augment + MultiScale,Set5_2x,29.61,0.9906
+SRCNN_Baseline,Original (flip + rot 90°),Set5_3x,27.82,0.9852
+SRCNN_Augmented,Augmentação robusta,Set5_3x,27.36,0.9839
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",Set5_3x,28.10,0.9862
+SRCNN_AugmentedMultiScale,Augment + MultiScale,Set5_3x,28.22,0.9865
+SRCNN_Baseline,Original (flip + rot 90°),Set14_2x,26.11,0.9749
+SRCNN_Augmented,Augmentação robusta,Set14_2x,25.52,0.9713
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",Set14_2x,26.87,0.9786
+SRCNN_AugmentedMultiScale,Augment + MultiScale,Set14_2x,26.88,0.9787
+SRCNN_Baseline,Original (flip + rot 90°),Set14_3x,25.21,0.9687
+SRCNN_Augmented,Augmentação robusta,Set14_3x,24.99,0.9671
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",Set14_3x,25.47,0.9703
+SRCNN_AugmentedMultiScale,Augment + MultiScale,Set14_3x,25.53,0.9707
+SRCNN_Baseline,Original (flip + rot 90°),BSD100_2x,26.53,0.9642
+SRCNN_Augmented,Augmentação robusta,BSD100_2x,25.89,0.9593
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",BSD100_2x,27.31,0.9698
+SRCNN_AugmentedMultiScale,Augment + MultiScale,BSD100_2x,27.28,0.9697
+SRCNN_Baseline,Original (flip + rot 90°),BSD100_3x,25.63,0.9560
+SRCNN_Augmented,Augmentação robusta,BSD100_3x,25.32,0.9530
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",BSD100_3x,25.88,0.9580
+SRCNN_AugmentedMultiScale,Augment + MultiScale,BSD100_3x,25.92,0.9584
+SRCNN_Baseline,Original (flip + rot 90°),Urban100_2x,23.29,0.9548
+SRCNN_Augmented,Augmentação robusta,Urban100_2x,22.65,0.9484
+SRCNN_MultiScale,"Múltiplas escalas (2x, 3x, 4x)",Urban100_2x,24.11,0.9629
+SRCNN_AugmentedMultiScale,Augment + MultiScale,Urban100_2x,24.07,0.9626
