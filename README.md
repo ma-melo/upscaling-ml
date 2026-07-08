@@ -1,17 +1,18 @@
-# Super-Resolução de Imagens: Comparação de Arquiteturas
+# Testando Arquiteturas para Super-Resolução de Imagens
 
-**Projeto Final da Disciplina [ML2](https://ganacim.github.io/ml2-2026/)** (2026)  
+**Projeto Final da Disciplina [ML2](https://ganacim.github.io/ml2-2026/)** (2026)
 **Alunos:** [Marcos Abílio](https://github.com/ma-melo) e [Gabriel Vieira](https://github.com/gabrielgszv)
+**Repositório:** https://github.com/ma-melo/upscaling-ml
 
 ---
 
-## 📋 Introdução
+## Introdução
 
-Este trabalho implementa, treina e compara três arquiteturas clássicas de super-resolução (SR) de imagens: **SRCNN**, **EDSR-baseline** e **ESRGAN**. O objetivo é avaliar o trade-off entre métricas tradicionais (PSNR, SSIM) e qualidade perceptual, respondendo a pergunta fundamental: *quanto de ganho métrico reflete ganho visual real?*
+Este trabalho implementa, treina e compara três arquiteturas clássicas de super-resolução (SR) de imagens: **SRCNN**, **EDSR-baseline** e **ESRGAN**. O objetivo é avaliar o trade-off entre métricas tradicionais (PSNR, SSIM) e qualidade perceptual.
 
 ---
 
-## 🎯 O Problema: Super-Resolução de Imagens
+## O que é Super-Resolução de Imagens?
 
 A super-resolução é o problema de aumentar a resolução de uma imagem de baixa resolução (LR) para alta resolução (HR), reconstruindo detalhes que foram perdidos durante a degradação. É um problema **mal-posto** (ill-posed) porque múltiplas imagens HR podem produzir a mesma imagem LR.
 
@@ -21,385 +22,263 @@ A super-resolução é o problema de aumentar a resolução de uma imagem de bai
 - Preparação de conteúdo para exibição em telas maiores
 
 ### Desafio técnico
-O espaço de possíveis soluções é enorme. Modelos ingênuos (interpolação bicúbica) produzem imagens borradas. Redes neurais aprendem a alucinarem detalhes realistas, mas com trade-offs:
+O espaço de possíveis soluções é enorme. Modelos ingênuos (interpolação bicúbica) produzem imagens borradas. Redes neurais aprendem a alucinar detalhes realistas, mas com trade-offs:
 - **Fidelidade pixel-a-pixel** (PSNR alto) vs. **Qualidade perceptual** (menos artefatos, texturas mais naturais)
 
 ---
 
-## 📚 Arquiteturas de Referência
+## Arquiteturas de Referência
 
-### 1. **SRCNN** (Dong et al., 2016)
+### **SRCNN**
 
-**Referência:** [Learning a Deep Convolutional Network for Image Super-Resolution](https://arxiv.org/abs/1501.04112)
+**Referência:** [Learning a Deep Convolutional Network for Image Super-Resolution](https://arxiv.org/abs/1501.00092)
 
-- **Conceito:** Primeira rede deep learning para SR; simples e elegante
-- **Arquitetura:** 3 camadas convolucionais (9→1→5 kernels)
+- **Arquitetura:** 3 camadas convolucionais. A primeira extrai feature maps da imagem de baixa resolução, a segunda mapeia essas características para o patch de alta resolução e a última combina tudo para gerar a imagem final.
 - **Entrada:** Imagem LR já upscalada para tamanho HR via bicúbica
-- **Vantagem:** Rápida, baixo uso de memória
-- **Limitação:** Sem residuais; dificuldade em treinar profundidade
+- **Vantagem:** Rápida e de baixo uso de memória
+- **Limitação:** Sem residuais e dificuldade em treinar profundidade
 
 ```
 Input (bicúbic upscaled) → Conv(9) → ReLU → Conv(1) → ReLU → Conv(5) → Output
 ```
 
-### 2. **EDSR-baseline** (Lim et al., 2017)
+### 2. **EDSR**
 
-**Referência:** [Enhanced Deep Residual Networks for Single Image Super-Resolution](https://arxiv.org/abs/1707.02671)
+**Referência:** [Enhanced Deep Residual Networks for Single Image Super-Resolution](https://arxiv.org/abs/1707.02921)
 
-- **Conceito:** Arquitetura residual moderna; treina em RGB end-to-end
 - **Arquitetura:** 16 blocos residuais (64 features), sem BatchNorm, upsampling via PixelShuffle
-- **Entrada:** Imagem LR "pequena"; a rede aprende upsampling internamente
-- **Vantagem:** Melhor performance (PSNR), treino mais estável, sem BatchNorm (menos dependência de batch size)
-- **Inovação chave:** Skip connection global ao redor dos blocos residuais
+- **Entrada:** Imagem LR "pequena" e a rede aprende o upsampling internamente
+- **Vantagem:** Melhor performance (PSNR) e treino mais estável
 
 ```
 Input (LR) → Conv(3) → [16 ResidualBlocks] → Conv(3) + Skip → PixelShuffle(2x2x) → Conv(3) → Output
 ```
 
-### 3. **ESRGAN** (Wang et al., 2018)
+### 3. **ESRGAN**
 
 **Referência:** [ESRGAN: Enhanced Super-Resolution Generative Adversarial Networks](https://arxiv.org/abs/1809.00219)
 
-- **Conceito:** GAN para super-resolução perceptual; foco em realismo visual
-- **Arquitetura:** Gerador com blocos RRDB (Residual Dense Blocks) + Discriminador relativístico
-- **Features:** Perceptual loss (VGG19), Adversarial loss, relaxamento relativístico
-- **Vantagem:** Imagens mais realistas, menos suavização
-- **Trade-off:** Pode alucinar detalhes; PSNR pode ser menor apesar de melhor qualidade visual
+Mesmo com os modelos anteriores apresentando boa avaliação nas métricas clássicas (como PSNR), a dependência da otimização do erro absoluto (L1) restringe o modelo na formação de texturas mais complexas e naturais. O ESRGAN melhora a arquitetura das GANs através de três modificações:
+
+- **Arquitetura do Gerador:** os blocos residuais convencionais foram substituídos por blocos RRDB (Residual-in-Residual Dense Block). Esse bloco mantém a ideia do EDSR de não usar Batch Normalization e introduz conexões mais densas dentro dos próprios blocos residuais, permitindo que a rede recupere características complexas desde as camadas iniciais até o final do processamento, o que garante maior estabilidade no aprendizado de texturas.
+- **Discriminador Relativístico Médio (RaD):** ao contrário do discriminador padrão de uma GAN (que estima se uma imagem é falsa ou real), o ESRGAN usa o *Relativistic average Discriminator*, que calcula a probabilidade de uma imagem real ser "mais realista" que uma imagem gerada. Isso força o gerador a criar detalhes de forma mais agressiva para enganar o discriminador.
+- **Perda Perceptual aprimorada:** a função de custo total combina a perda por pixel (L1), a perda adversarial (RaD) e a perda perceptual baseada na rede VGG. A VGG não atua como classificador, mas como avaliador de texturas, comparando os mapas de características extraídos **antes** da função de ativação, o que preserva mais informação sobre a textura.
+
+Por fim, o ESRGAN faz uma **interpolação de redes**: os pesos de um modelo treinado só com perda L1 (garantindo estabilidade de cor e geometria) são interpolados com os pesos do modelo GAN (focado em realismo), equilibrando exatidão de pixel e realismo.
 
 ```
-Gerador: Input → Conv(3) → [23 RRDB] → Conv(3) + Skip → Upsampling(2x2) → Conv(3) → Output
+Gerador: Input → Conv(3) → [RRDB Blocks] → Conv(3) + Skip → Upsampling(2x2) → Conv(3) → Output
 Discriminador: Input → [Conv layers with stride] → Dense layers → Realista/Fake
 ```
 
 ---
 
-## 🔬 Metodologia Experimental
+## Metodologia Experimental
 
 ### Datasets
 
-| Nome | Tipo | # Imagens | Uso | Detalhes |
-|------|------|-----------|-----|----------|
-| DIV2K | Treino | 800 (subset usado) | Treino | Imagens naturais de alta qualidade |
-| Set5 | Benchmark | 5 | Avaliação | Muito fácil, convergência rápida |
-| Set14 | Benchmark | 14 | Avaliação | Dificuldade média |
-| BSD100 | Benchmark | 100 | Avaliação | Imagens naturais, gramas/texturas |
-| Urban100 | Benchmark | 100 | Avaliação (extra) | Cenas urbanas, high-frequency |
+| Nome | Tipo | # Imagens | Uso |
+|------|------|-----------|-----|
+| DIV2K_train | Treino | 800 | Treino do SRCNN, EDSR e ESRGAN |
+| DF2K (DIV2K + Flickr2K) | Treino | 3.450 | Treino do ESRGAN |
+| DIV2K_valid | Benchmark | 100 | Avaliação |
+| Set5 | Benchmark | 5 | Avaliação |
+| Set14 | Benchmark | 14 | Avaliação |
+| BSD100 | Benchmark | 100 | Avaliação |
+| Urban100 | Benchmark | 100 | Avaliação |
 
-### Protocolo de Avaliação
+As imagens de baixa resolução foram obtidas aplicando degradação por subamostragem bicúbica com escala de **4×**. Foram usados patches com dimensões adaptadas a cada modelo, conforme as implementações originais dos papers de referência. Para evitar overfitting e aumentar a variedade do dataset, foi aplicado Data Augmentation com rotações aleatórias e espelhamentos.
 
-- **Fator de upscaling:** 4× (mais visualmente interessante, padrão nos papers)
-- **Geração LR:** Downsampling bicúbico + degradação
-- **Augmentação treino:** Flip horizontal + rotações 90° (padrão dos papers)
-- **Métricas:**
-  - **PSNR (Peak Signal-to-Noise Ratio):** Métrica pixel-a-pixel, tradicional mas correlação fraca com percepção
-  - **SSIM (Structural Similarity Index):** Considera estrutura local, melhor que PSNR mas ainda não ideal
-  - **Inspeção visual:** Grid comparativo de recortes ampliados (o que realmente importa)
+### Protocolo de Treino por Modelo
 
-### Hiperparâmetros
+- **SRCNN:** função de perda de Erro Quadrático Médio (**MSE**), minimizando a distância entre os pixels gerados e os de referência.
+- **EDSR:** otimização baseada em Erro Absoluto Médio (**perda L1**), mais adequada para reconstrução de contornos e bordas. Sem camadas de Batch Normalization.
+- **ESRGAN:** devido à instabilidade do treino de GANs, o treino foi separado em duas fases:
+  - **Fase 1 (épocas 1–20):** o gerador é treinado minimizando apenas a perda L1, formando uma base geométrica.
+  - **Fase 2 (épocas 21–150):** a função de custo passa a combinar perda L1, perda Adversarial e perda Perceptual (VGG).
+  - Após o treino, os pesos das duas fases foram interpolados (**80% GAN + 20% fase 1**).
 
-| Parâmetro | SRCNN | EDSR-baseline | ESRGAN |
-|-----------|-------|---------------|--------|
-| Loss | MSE (L2) | L1 | Perceptual + Adversarial |
-| Optimizer | Adam | Adam | Adam (Gen + Disc) |
-| Learning Rate | 0.001 | 0.001 | 0.001 |
-| Batch Size | 16-32 | 16-32 | 4-8 (memória) |
-| Epochs | ~50-100 | ~100-200 | ~100-200 |
-| Scheduler | StepLR | CosineAnnealingLR | StepLR |
-| Early Stopping | Patience=10 | Patience=15 | Não usado (GAN) |
+### Métricas de Avaliação
 
----
+Os modelos foram comparados com a interpolação bicúbica nos conjuntos de teste **Set5** e **DIV2K**, usando:
 
-## 🛠️ Decisões de Design Importantes
-
-### 1. **Input: Bicúbic Pré-upscalado vs. LR Puro**
-- **SRCNN:** Recebe LR já upscalado via bicúbica → funciona como "refinador"
-- **EDSR/ESRGAN:** Recebem LR "pequeno" → aprendem upsampling do zero
-- **Razão:** Papers originais usam essa abordagem; preservamos fidelidade histórica
-
-### 2. **Loss Function: MSE vs. L1 vs. Perceptual**
-- **MSE (SRCNN):** Simples, converge rápido, mas produz imagens suavizadas
-- **L1 (EDSR):** Melhor para detalhes finos, menos suavização (recomendado em práticas modernas)
-- **Perceptual + Adversarial (ESRGAN):** Força o gerador a "enganar" discriminador; realismo > fidelidade pixel-a-pixel
-
-### 3. **Upsampling: PixelShuffle vs. Nearest + Conv**
-- **PixelShuffle (EDSR):** Rearranjo inteligente de canais, sem checkerboard artifacts
-- **Nearest + Conv (ESRGAN):** Mais controle, compatível com GAN discriminator
-
-### 4. **Sem BatchNorm na EDSR-baseline**
-- **Razão:** BatchNorm adiciona dependência do batch size; durante inference não há "batch", causando domain shift
-- **Trade-off:** Convergência mais lenta, mas melhor generalização
-
-### 5. **VGG19 Feature Extractor (ESRGAN)**
-- Usa features pré-treinadas de ImageNet (camadas 35 de VGG19)
-- Força o gerador a produzir imagens que ativam features "naturais" na rede
-- Congelado (no gradients) para estabilidade
+- **PSNR (Peak Signal-to-Noise Ratio):** mede a fidelidade pixel a pixel com base no erro quadrático médio.
+- **SSIM (Structural Similarity Index Measure):** avalia a preservação da estrutura com base em luminância, contraste e estrutura, variando de 0 a 1.
+- **Inspeção visual:** grid comparativo de recortes ampliados, o que realmente importa para percepção humana.
 
 ---
 
-## 📁 Estrutura do Projeto
+## Decisões de Design Importantes
+
+### 1. Input: Bicúbico Pré-upscalado vs. LR Puro
+- **SRCNN:** recebe LR já upscalado via bicúbica → funciona como "refinador"
+- **EDSR/ESRGAN:** recebem LR "pequeno" → aprendem o upsampling do zero
+- **Razão:** os papers originais usam essa abordagem; preservamos a fidelidade histórica
+
+### 2. Loss Function: MSE vs. L1 vs. Perceptual
+- **MSE (SRCNN):** simples, converge rápido, mas produz imagens mais suavizadas
+- **L1 (EDSR):** melhor para detalhes finos, menos suavização
+- **Perceptual + Adversarial (ESRGAN):** força o gerador a "enganar" o discriminador; prioriza realismo sobre fidelidade pixel-a-pixel
+
+### 3. Sem BatchNorm no EDSR
+- **Razão:** BatchNorm adiciona dependência do tamanho do batch; durante a inferência não há "batch", causando domain shift
+- **Trade-off:** convergência mais lenta, mas melhor generalização
+
+### 4. Interpolação de Redes no ESRGAN
+- Combina os pesos do modelo L1 (fase 1) com os do modelo GAN (fase 2) na proporção 20%/80%
+- Estabiliza cores e reduz artefatos, equilibrando exatidão de pixel com realismo perceptual
+
+---
+
+## Estrutura do Projeto
 
 ```
 upscaling-ml/
-├── 00_guia_analise_comparacao.ipynb    # 📖 COMECE AQUI - Análise exploratória e comparação
-├── 01_train_srcnn.ipynb                # Treino do SRCNN (1h)
-├── 02_train_edsr.ipynb                 # Treino do EDSR-baseline (3h)
-├── 03_train_esrgan.ipynb               # Treino do ESRGAN (12h+)
-├── models.py                           # Implementação das 3 arquiteturas
-├── datasets.py                         # Carregamento de DIV2K, Set5, Set14, BSD100, Urban100
-├── train.py                            # Loop de treino/avaliação genérico (fit, train_one_epoch, evaluate)
-├── metrics.py                          # PSNR, SSIM (versão rápida + skimage)
-├── edsrgan_model.ipynb                 # Notebook histórico de exploração
-├── datasets/                           # Dados (DIV2K, Set5, Set14, BSD100, Urban100)
-├── outputs/                            # Checkpoints e históricos de treino (experimentos)
-└── README.md                           # Este arquivo
+├── 00_guia_analise_comparacao.ipynb    # Análise exploratória e comparação entre os modelos treinados
+├── 01_train_srcnn.ipynb           # Treino do SRCNN
+├── 02_train_edsr.ipynb            # Treino do EDSR
+├── 03_train_esrgan.ipynb          # Treino do ESRGAN
+├── 04_train_esrgan_df2k.ipynb     # Treino do ESRGAN
+├── models.py                      # Implementação das 3 arquiteturas
+├── datasets.py                    # Carregamento de DIV2K, DF2K, Set5, Set14, BSD100, Urban100
+├── train.py                       # Loop de treino/avaliação genérico (fit, train_one_epoch, evaluate)
+├── metrics.py                     # PSNR, SSIM
+├── datasets/                      # Datasets (DIV2K, DF2K, Set5, Set14, BSD100, Urban100)
+├── outputs/                       # Checkpoints e históricos de treino (experimentos)
+└── README.md                      # Este arquivo
 ```
 
 ---
 
-## 📖 Guia Prático: Como Usar os Notebooks
+## Guia Prático: Como Usar os Notebooks
 
-### 🚀 Início Rápido (5 min)
+### Início Rápido
 
 1. **Abra `00_guia_analise_comparacao.ipynb`**
-   - Veja análise exploratória dos datasets
+   - Veja a análise exploratória dos datasets
    - Entenda a estrutura dos dados
    - Visualize exemplos de patches
 
-2. **Depois de treinar os modelos** (veja próximas seções)
+2. **Depois de treinar os modelos** (veja a seção abaixo)
    - Execute as células finais de `00_guia_analise_comparacao.ipynb`
-   - Compare resultados dos 3 modelos
+   - Compare os resultados dos 3 modelos
    - Gere tabelas e gráficos de comparação
 
----
+### Para Treinar os Modelos (Precisa baixar os datasets antes)
 
-### 🎯 Para Treinar os Modelos
+**Opção A: Treinar um por um**
 
-**Opção A: Treinar um por um (recomendado)**
+1. **SRCNN**
+   - Abra `01_train_srcnn.ipynb` e execute todas as células
+   - Modelo salvo em `outputs/SRCNN_<data>/srcnn_final.pt`
 
-1. **SRCNN** (~1 hora em GPU)
-   - Abra `01_train_srcnn.ipynb`
-   - Execute todas as células
-   - Modelo salvo em `outputs/SRCNN_2026-07-05/srcnn_final.pt`
+2. **EDSR-Baseline**
+   - Abra `02_train_edsr.ipynb` e execute todas as células
+   - Modelo salvo em `outputs/EDSR_<data>/edsr_final.pt`
 
-2. **EDSR-Baseline** (~3 horas em GPU)
-   - Abra `02_train_edsr.ipynb`
-   - Execute todas as células
-   - Modelo salvo em `outputs/EDSR_2026-07-05/edsr_final.pt`
+3. **ESRGAN**
+   - Abra `03_train_esrgan.ipynb` e execute todas as células
+   - Modelos salvos em `outputs/ESRGAN_<data>/` (variantes DIV2K e DF2K)
 
-3. **ESRGAN** (~12 horas em GPU)
-   - Abra `03_train_esrgan.ipynb`
-   - Execute todas as células
-   - Modelos salvos em `outputs/ESRGAN_2026-07-05/`
-   - ⏱️ **Dica:** Deixe rodando à noite
+**Opção B (Recomendado): Usar modelos pré-treinados**
+- Como os modelos já existem em `outputs/`, pule direto para `00_guia_analise_comparacao.ipynb`
 
-**Opção B: Usar modelos pré-treinados**
-- Se os modelos já existem em `outputs/`, pule direto para `00_guia_analise_comparacao.ipynb`
+### Comodidades
 
----
-
-### 🔧 Customizações Comuns
-
-**Reduzir tempo de treino (teste rápido):**
-```python
-n_epochs = 10  # Em vez de 100
-BATCH_SIZE = 8  # Em vez de 16
-```
-
-**Usar GPU diferente ou CPU:**
-```python
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-```
-
-**Monitorar treino em tempo real:**
+**Tensor Board:**
 ```bash
-# Em outro terminal:
 tensorboard --logdir outputs
 # Acesse: http://localhost:6006
 ```
 
 ---
 
-### 📊 Comparação de Resultados
+## Resultados
 
-Após treinar os 3 modelos, execute `00_guia_analise_comparacao.ipynb` para:
-- ✅ Tabela comparativa (PSNR, SSIM em Set5, Set14, BSD100, Urban100)
-- ✅ Visualização lado-a-lado (HR original, Bicubic, SRCNN, EDSR, ESRGAN)
-- ✅ Zoom em detalhes de texturas
-- ✅ Mapas de erro absoluto
+### Sumário de Performance (Fator 4×, médias em Set5 e DIV2K)
 
----
+| Arquitetura | Função de Custo Base | PSNR (dB) | SSIM |
+|---|---|---|---|
+| Interpolação Bicúbica | — | 26.82 | 0.9953 |
+| SRCNN | Perda L2 (MSE) | 25.56 | 0.9797 |
+| EDSR | Perda L1 | **27.77** | 0.9753 |
+| ESRGAN | Perda Perceptual + GAN | 23.47 | 0.9575 |
 
----
+**Observações sobre os números:**
+- O **EDSR** foi o único modelo a superar a interpolação bicúbica em PSNR (27.77 dB), confirmando o ganho esperado de uma arquitetura residual profunda treinada com perda L1.
+- O **SRCNN** ficou abaixo do bicúbico (25.56 dB). Isso se deve à quantidade reduzida de épocas de treino usada para viabilizar a comparação entre arquiteturas (50 épocas em vez de 100); em testes à parte, a versão treinada por 100 épocas superou o bicúbico.
+- O **ESRGAN** teve os menores valores de PSNR (23.47 dB) e SSIM (0.9575), o que é esperado, já que sua função de perda é dominada por penalizações adversariais e perceptuais, que otimizam para realismo visual e não para fidelidade pixel-a-pixel.
+- De modo geral, tanto o SRCNN quanto o ESRGAN precisariam de mais épocas de treino para atingir os patamares reportados nos papers de referência.
 
-## 🚀 Como Reproduzir
+### Exemplos Visuais
 
-### 1. Instalação
+**Original**
 
-```bash
-# Criar ambiente virtual (recomendado)
-python3 -m venv venv
-source venv/bin/activate
+![Original](imagens_saida/0810_original_HR.png)
 
-# Instalar dependências
-pip install -r requirements.txt
-```
+**SRCNN**
 
-**Nota:** `requirements.txt` detecta automaticamente plataforma (macOS usa MPS, Linux/Windows usam CUDA 12.8).
+![Resultados SRCNN](imagens_saida/0810_resultado_srcnn.png)
 
-### 2. Preparar Dados
+**EDSR**
 
-```bash
-# Estrutura esperada:
-# datasets/
-# ├── DIV2K/
-# │   ├── DIV2K_train_HR/
-# │   └── DIV2K_valid_HR/
-# ├── Set5/image_SRF_4/
-# ├── Set14/image_SRF_4/
-# ├── BSD100/image_SRF_4/
-# └── Urban100/image_SRF_4/
-```
+![Resultados EDSR](imagens_saida/0810_resultado_edsr.png)
 
-Datasets precisam estar no formato padrão dos benchmarks (pares `*_HR.png` e `*_LR.png`).
+**ESRGAN**
 
-### 3. Treinar um Modelo
+![Resultados ESRGAN](imagens_saida/0810_resultado_esrgan.png)
 
-```python
-from models import SRCNN, EDSRBaseline, ESRGANGenerator
-from datasets import SRDataset, SRBenchmarkDataset
-from train import fit
-import torch
-from torch.utils.data import DataLoader
+**ESRGAN DF2K**
 
-# Exemplo: treinar EDSR-baseline
-train_data = SRDataset("datasets/DIV2K/DIV2K_train_HR", patch_size=96, scale=4)
-val_data = SRBenchmarkDataset("datasets/Set5/image_SRF_4", scale=4)
+![Resultados ESRGAN DF2K](imagens_saida/0810_resultado_esrgan_df2k.png)
 
-train_loader = DataLoader(train_data, batch_size=16, shuffle=True)
-val_loader = DataLoader(val_data, batch_size=1)
+**Teste dos Modelos Principais no Set14**
 
-model = EDSRBaseline(num_features=64, num_blocks=16, scale=4)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-criterion = torch.nn.L1Loss()
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-history = fit(
-    model, train_loader, val_loader, optimizer, criterion, device,
-    epochs=100, upscale_input=False, tag="edsr_experiment",
-    patience=15, scheduler=torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
-)
-```
-
-Ver `edsrgan_model.ipynb` ou `upscaling(v7).ipynb` para exemplos completos.
-
-### 4. Avaliar em Benchmarks
-
-```python
-from metrics import calc_psnr, calc_ssim, calc_ssim_skimage
-
-# Carregar modelo treinado e processar benchmark
-model.eval()
-psnr_scores, ssim_scores = [], []
-
-for lr, hr in val_loader:
-    with torch.no_grad():
-        sr = model(lr.to(device))
-    psnr_scores.append(calc_psnr(sr, hr))
-    ssim_scores.append(calc_ssim_skimage(sr, hr))
-
-print(f"PSNR: {sum(psnr_scores)/len(psnr_scores):.2f}")
-print(f"SSIM: {sum(ssim_scores)/len(ssim_scores):.4f}")
-```
+![Modelos Principais](outputs/RESULTS_2026-07-08/visualizacao_resultados.png)
 
 ---
 
-## 📊 Resultados
-
-### Sumário de Performance (Fator 4×)
-
-| Modelo | Set5 PSNR | Set5 SSIM | Set14 PSNR | BSD100 PSNR | Urban100 PSNR |
-|--------|-----------|----------|-----------|-------------|---------------|
-| Bicubic (baseline) | — | — | — | — | — |
-| SRCNN | — | — | — | — | — |
-| EDSR-baseline | — | — | — | — | — |
-| ESRGAN | — | — | — | — | — |
-
-**Status:** Resultados a serem preenchidos após consolidação dos experimentos em `outputs/` e `resultados_esrgan/`.
-
-### Observações Qualitativas
-
-> **Placeholder para análise visual.** Após treino final:
-> 
-> - **SRCNN:** Rápido, mas artefatos de ringing em bordas
-> - **EDSR-baseline:** Ganho significativo em texturas finas vs. SRCNN
-> - **ESRGAN:** Mais realista, menos suavização; pode alucinar detalhes em regiões ambíguas
-
----
-
-## 🔍 Discussão: Fidelidade vs. Percepção
+## Discussão: Fidelidade vs. Percepção
 
 Um dos objetivos principais deste trabalho é destacar o **desacoplamento entre PSNR/SSIM e qualidade perceptual**.
 
-### Observações esperadas
-
-1. **SRCNN com PSNR alto != qualidade visual boa**
-   - PSNR penaliza qualquer desvio pixel-a-pixel
-   - Pequenas translações causam queda de PSNR desproporcional
-
-2. **EDSR-baseline: ganho de detalhes**
-   - Melhor em texturas finas (grama, tecido)
-   - Menos suavização que SRCNN
-
-3. **ESRGAN: realismo vs. fidelidade**
-   - Pode ter PSNR ligeiramente menor
-   - Visualmente mais atraente (menos artefatos, texturas mais naturais)
-   - Risco: alucinação de detalhes inventados
+1. **SRCNN e EDSR:** ambos suavizam alguns objetos e deixam a imagem pouco nítida, mesmo apresentando boas métricas de fidelidade pixel-a-pixel.
+2. **ESRGAN:** mostrou o melhor resultado para a *visualização* da imagem. O processo de interpolação de redes se mostrou eficaz, gerando imagens sem ruídos e mais realistas, mesmo com PSNR/SSIM inferiores aos outros modelos.
+3. **Conclusão prática:** PSNR e SSIM penalizam qualquer desvio pixel-a-pixel (inclusive pequenas translações), o que não necessariamente reflete qualidade percebida por um humano. O ESRGAN evidencia esse desacoplamento: métricas piores, resultado visual melhor.
 
 ### Métrica Alternativa
 
-A literatura recente propõe métricas perceptuais (LPIPS, FID) que correlacionam melhor com percepção humana. Este projeto usa PSNR/SSIM por ser padrão, mas reconhece a limitação.
+A literatura recente propõe métricas perceptuais (LPIPS, FID) que correlacionam melhor com a percepção humana. Este projeto usa PSNR/SSIM por serem o padrão da área, mas reconhece essa limitação.
 
 ---
 
-## 🎓 Aprendizados Principais
+## Aprendizados Principais
 
-1. **Contexto importa:** A mesma arquitetura treina diferente em DIV2K vs. Set5
-2. **Inicialização:** Xavier/He initialization é crítica para convergência
-3. **Loss é tudo:** L1 > MSE para details; perceptual loss necessário para realismo
-4. **Trade-off inerente:** Não há "melhor" modelo, apenas melhor para cada caso de uso
+1. Treinar mais épocas: reduzir épocas para viabilizar comparações (SRCNN em 50 em vez de 100) tem impacto direto e mensurável no PSNR final.
+2. A função de loss: L1 > MSE para detalhes finos; perda perceptual + adversarial é necessária para realismo, mesmo que penalize as métricas tradicionais.
+3. Trade-off inerente: não existe melhor modelo isolado. EDSR ganha em fidelidade métrica, enquanto ESRGAN ganha em qualidade perceptual.
+4. PSNR/SSIM têm limites claros: métricas altas não garantem boa percepção visual, e vice-versa.
 
 ---
 
-## 📝 Como Citar
-
-Se usar este trabalho como referência, cite o formato:
+## Como Citar
 
 ```bibtex
 @misc{abilio2026sr,
-  author = {Abílio, Marcos and Vieira, Gabriel},
-  title = {Super-Resolução de Imagens: Comparação de Arquiteturas},
-  school = {Universidade Federal de Minas Gerais},
+  author = {Melo, Marcos Abílio Esmeraldo and Vieira, Gabriel de Souza},
+  title = {Testando Arquiteturas para Super-Resolução de Imagens},
   year = {2026},
-  note = {Projeto Final, Disciplina ML2}
+  note = {Projeto Final, Aprendizado de Máquina 2}
 }
 ```
 
 ---
 
-## 📖 Referências Principais
+## Referências
 
-1. Dong, C., Lim, B., Yu, K., & others. (2016). *Learning a Deep Convolutional Network for Image Super-Resolution.* ECCV.
-2. Lim, B., Son, S., Kim, H., Nah, S., & Lee, K. M. (2017). *Enhanced Deep Residual Networks for Single Image Super-Resolution.* CVPR.
-3. Wang, X., Yu, K., Wu, S., Gu, J., Liu, Y., Dong, C., & Change Loy, C. (2018). *ESRGAN: Enhanced Super-Resolution Generative Adversarial Networks.* ECCV.
-4. Zhang, R., Isola, P., Efros, A. A., Shechtman, E., & Wang, O. (2018). *The Unreasonable Effectiveness of Deep Features as a Perceptual Metric.* CVPR (LPIPS metric).
-
----
-
-## 📞 Contato
-
-Para dúvidas sobre implementação ou resultados:
-- **Marcos Abílio:** [GitHub](https://github.com/ma-melo)
-- **Gabriel Vieira:** [GitHub](https://github.com/gabrielgszv)
+1. DONG, Chao; LOY, Chen Change; HE, Kaiming; TANG, Xiaoou. *Image Super-Resolution Using Deep Convolutional Networks*. IEEE Transactions on Pattern Analysis and Machine Intelligence. Disponível em: https://arxiv.org/abs/1501.00092. Acesso em: 13 junho 2026.
+2. LIM, Bee; SON, Sanghyun; KIM, Heewon; NAH, Seungjun; MU LEE, Kyoung. *Enhanced Deep Residual Networks for Single Image Super-Resolution*. CVPR Workshops. Disponível em: https://arxiv.org/abs/1707.02921. Acesso em: 13 junho 2026.
+3. WANG, Xintao; YU, Ke; WU, Shixiang; GU, Jinjin; LIU, Yihao; DONG, Chao; QIAO, Yu; LOY, Chen Change. *ESRGAN: Enhanced Super-Resolution Generative Adversarial Networks*. ECCV Workshops. Disponível em: https://arxiv.org/abs/1809.00219. Acesso em: 13 junho 2026.
 
 ---
 

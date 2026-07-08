@@ -17,10 +17,9 @@ from metrics import calc_psnr, calc_ssim
 def _upscale_to_match(lr_img, hr_img):
     # upsamplea lr_img via bicubic pro tamanho espacial exato de hr_img
     #
-    # usa size=hr_img.shape[-2:] em vez de scale_factor porque scale_factor
-    # multiplica o tamanho atual do tensor -- se o lr nao veio de uma divisao
-    # inteira exata (ex: patch_size=33, scale=4, 33 // 4 = 8, 8 * 4 = 32 != 33)
-    # o resultado nao bate com o hr e a loss quebra por shape incompativel.
+    # usa size=hr_img.shape[-2:] em vez de scale_factor porque scale_factor multiplica o tamanho atual do tensor
+    # se o lr nao veio de uma divisao inteira exata (ex: patch_size=33, scale=4, 33 // 4 = 8, 8 * 4 = 32 != 33)
+    # o resultado nao bate com o hr e a loss quebra por shape incompativel
     # mirar no tamanho absoluto do hr e robusto pra qualquer combinacao
     return F.interpolate(lr_img, size=hr_img.shape[-2:], mode="bicubic", align_corners=False)
 
@@ -32,14 +31,11 @@ def train_one_epoch(
 ):
     # treina o modelo por uma epoca
     #
-    # upscale_input: true pra srcnn (recebe lr ja upscalado via bicubic),
-    #   false pra modelos que fazem upsampling interno (edsr, esrgan)
+    # upscale_input: true pra srcnn (recebe lr ja upscalado via bicubic), false pra modelos que fazem upsampling interno (edsr, esrgan)
     # grad_clip: se definido, aplica clip_grad_norm_ com esse valor maximo.
-    #   recomendado pra redes mais profundas (edsr, esrgan), onde picos de
-    #   gradiente podem desestabilizar o treino
+    #   recomendado pra redes mais profundas (edsr, esrgan), onde picos de gradiente podem desestabilizar o treino
     # use_amp: mixed precision (torch.cuda.amp), so faz diferenca em gpu cuda.
-    #   requer scaler, criado uma unica vez fora do loop de epocas (fit ja
-    #   cuida disso)
+    #   requer scaler, criado uma unica vez fora do loop de epocas (fit ja cuida disso)
     #
     # retorna a loss media da epoca (media das medias por batch)
     if use_amp and scaler is None:
@@ -86,27 +82,20 @@ def evaluate(model, loader, device, scale=4, upscale_input=True, ssim_fn=calc_ss
              criterion=None, show_progress=True):
     # avalia o modelo num dataset de teste (ex: set5, set14, div2k_valid)
     #
-    # assume loader com batch_size=1: cada metrica e calculada por imagem
-    # individual e depois agregada. com batch_size > 1 o psnr/ssim seria
-    # calculado sobre o batch inteiro, perdendo granularidade por imagem
+    # assume loader com batch_size=1: cada metrica e calculada por imagem individual e depois agregada
+    # com batch_size > 1 o psnr/ssim seria calculado sobre o batch inteiro, perdendo granularidade por imagem
     #
     # ssim_fn: por padrao calc_ssim (versao global simplificada, rapida,
-    #   boa pra acompanhar o treino, mas nao e o ssim padrao da literatura).
+    #   boa pra acompanhar o treino, mas nao e o ssim padrao da literatura)
     #   pros resultados finais do relatorio, passar calc_ssim_skimage:
-    #   from metrics import calc_ssim_skimage
-    #   evaluate(model, loader, device, ssim_fn=calc_ssim_skimage)
-    # criterion: se fornecido, calcula tambem a loss de validacao no mesmo
-    #   formato da train_loss, pra comparar as duas curvas e identificar
-    #   overfitting. calculada antes do clamp(0,1), no mesmo espaco numerico
-    #   da loss vista no treino. se none, a chave "loss_val" nao aparece
-    # show_progress: mostra barra de progresso. aqui cada "batch" e uma
-    #   imagem inteira, entao um benchmark maior (urban100) pode demorar
-    #   sem feedback. fit() chama com show_progress=False
+    #       from metrics import calc_ssim_skimage
+    #       evaluate(model, loader, device, ssim_fn=calc_ssim_skimage)
+    # criterion: se fornecido, calcula tambem a loss de validacao no mesmo formato da train_loss, pra comparar as duas curvas e identificar overfitting.
+    #   calculada antes do clamp(0,1), no mesmo espaco numerico da loss vista no treino. se none, a chave "loss_val" nao aparece
+    # show_progress: mostra barra de progresso. aqui cada "batch" e uma imagem inteira, entao um benchmark maior (urban100) pode demorar sem feedback. fit() chama com show_progress=False
     #
-    # retorna dict com psnr_model, psnr_model_std, ssim_model, ssim_model_std,
-    # psnr_bicubic e opcionalmente loss_val. os campos *_std ajudam a ver se
-    # o modelo e consistente entre as imagens ou se poucas imagens dificeis
-    # puxam a media pra baixo
+    # retorna dict com psnr_model, psnr_model_std, ssim_model, ssim_model_std, psnr_bicubic e opcionalmente loss_val
+    # os campos *_std ajudam a ver se o modelo e consistente entre as imagens ou se poucas imagens dificeis puxam a media pra baixo
     model.eval()
 
     psnr_model, ssim_model = [], []

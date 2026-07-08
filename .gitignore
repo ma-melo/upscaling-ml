@@ -212,6 +212,8 @@ mlc/
 .gitattributes
 output.png
 
+.DS_Store
+
 DIV2K_train_HR/
 DIV2K_valid_HR/
 BSD100/
