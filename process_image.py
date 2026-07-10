@@ -9,7 +9,7 @@ from pathlib import Path
 from models import SRCNN, EDSRBaseline, ESRGANGenerator
 
 # caminhos
-IMAGEM = "datasets/DIV2K_valid_HR/0886.png" # aqui vc altera para a imagem que deseja testar
+IMAGEM = "imagens_teste/impa.png" # aqui vc altera para a imagem que deseja testar
 PESOS_SRCNN = "outputs/SRCNN_2026-07-07/srcnn_final.pt"
 PESOS_EDSR = "outputs/EDSR_2026-07-07/edsr_final.pt"
 PESOS_ESRGAN = "outputs/ESRGAN_2026-07-07/esrgan_final_interpolated.pth"

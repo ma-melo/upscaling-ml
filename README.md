@@ -1,7 +1,9 @@
 # Testando Arquiteturas para Super-Resolução de Imagens
 
 **Projeto Final da Disciplina [ML2](https://ganacim.github.io/ml2-2026/)** (2026)
+
 **Alunos:** [Marcos Abílio](https://github.com/ma-melo) e [Gabriel Vieira](https://github.com/gabrielgszv)
+
 **Repositório:** https://github.com/ma-melo/upscaling-ml
 
 ---
@@ -258,19 +260,6 @@ A literatura recente propõe métricas perceptuais (LPIPS, FID) que correlaciona
 2. A função de loss: L1 > MSE para detalhes finos; perda perceptual + adversarial é necessária para realismo, mesmo que penalize as métricas tradicionais.
 3. Trade-off inerente: não existe melhor modelo isolado. EDSR ganha em fidelidade métrica, enquanto ESRGAN ganha em qualidade perceptual.
 4. PSNR/SSIM têm limites claros: métricas altas não garantem boa percepção visual, e vice-versa.
-
----
-
-## Como Citar
-
-```bibtex
-@misc{abilio2026sr,
-  author = {Melo, Marcos Abílio Esmeraldo and Vieira, Gabriel de Souza},
-  title = {Testando Arquiteturas para Super-Resolução de Imagens},
-  year = {2026},
-  note = {Projeto Final, Aprendizado de Máquina 2}
-}
-```
 
 ---
 
